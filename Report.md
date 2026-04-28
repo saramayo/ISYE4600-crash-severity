@@ -46,6 +46,10 @@ Since the dataset we used is relatively small (around 5,500 incidents after clea
 
 **Severity Target.** We use binary label `severe` which is defined by the OR rule above. To avoid directly representing the outcome, we keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
 
+The schematic below is a quick visual of the same OR rule.
+
+![Severity label rule. If at least one of injury moderate or worse, airbag deployed, or vehicle towed is true, the incident is labeled severe.](Presentation/figures/02_severity_label_rule_schematic.png)
+
 **Features.** 
 
 We divide these into two groups, what we get directly from the tabular fields in the incidents reports, and what we extract from the free text narrative.
@@ -192,6 +196,10 @@ Top narrative flags (by absolute LR coefficient on ADS, from `lr_ads_coefficient
 - `nav_av_stopped`, `nav_other_struck_av`, `nav_minor_damage_lang` are associated with **lower** severe probability.
 - `nav_av_moving`, `nav_lane_change`, `nav_in_parking_lot` push the probability **up** in some clusters (see 6.5).
 
+The figure below shows the largest odds ratios of the ADS LR model. Bars to the right of the dashed line at 1.0 raise the predicted severe probability, bars to the left lower it. This is what makes logistic regression useful here: even when its raw accuracy is lower than the tree models, the coefficients are easy to read.
+
+![Top odds ratios of the ADS logistic regression with tabular plus narrative features.](Presentation/figures/09_top_odds_ratios_lr.png)
+
 ### 6.4 Error analysis (false negatives)
 
 The output of `09_stratified_fn_analysis.py` gives the missed severe crashes for the best model on each level. Summary (`fn_summary.csv`):
@@ -206,6 +214,10 @@ Table 5. False negatives per stratified model.
 Figure `Presentation/figures/17_fn_analysis_stratified.png` shows the top contexts as bar charts.
 
 ![Where the stratified models miss severe cases (current era test).](Presentation/figures/17_fn_analysis_stratified.png)
+
+The two confusion matrices below give the counts behind these miss patterns. ADS XGBoost has 22 false negatives out of 283 severe cases in the test set (about 7.8%), while LR on L2 misses 25 out of 766 (about 3.3%, before threshold tuning makes the L2 RF / XGB hit zero).
+
+![Confusion matrices for the stratified models on the current era test, ADS on the left and L2 on the right.](Presentation/figures/14_stratified_confusion_matrices_ads_l2.png)
 
 What the model misses on ADS is mostly **street level crashes with a passenger vehicle**, where the AV was stopped or in slow traffic and the narrative is short. These cases look benign on paper but the airbag did fire or the vehicle was towed. On L2 the misses are concentrated on **highway / freeway** crashes that the company described under "Other, see narrative", which is exactly where the structured form gives less information.
 
@@ -232,6 +244,10 @@ We also ran the same clustering on L2 (`11_cluster_profiling_by_level.py --level
 The figure below brings together the parts of the ADS clustering that are useful to read at once. The top left panel is the silhouette score against `k` from 3 to 8, with a dashed line at the value chosen by the maximum (k = 7). The next two panels show the cluster sizes and the severe rate per cluster compared with the overall ADS average. The bottom panels show the roadway type distribution per cluster and the human readable scenario label table that we used in Table 6.
 
 ![ADS clustering summary: silhouette score by k, cluster sizes, severe rate per cluster, roadway type per cluster, and the scenario label table.](Modeling/clustering/kmeans_cluster_profiles_figure.png)
+
+For comparison, the L2 clustering looks like the figure below. Most L2 clusters sit between 95% and 100% severe, so the bars in the "severe rate per cluster" panel are almost flat at the top. This visually confirms what we said in section 4: for L2, the scenario differences are real but they do not matter much for the severity label, because almost everything that gets reported as L2 is already severe.
+
+![L2 clustering summary, same panels as the ADS figure.](Modeling/clustering/l2_kmeans_cluster_profiles_figure.png)
 
 ---
 
