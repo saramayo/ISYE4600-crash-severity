@@ -31,7 +31,7 @@ PROFILE_COLS = [
 ]
 
 
-# impute, encode, and standardize features into a numpy array for k-means
+# fill in missing values, encode, and standardize features into a numpy array for k-means
 def build_cluster_X(df: pd.DataFrame, features: list[str]) -> np.ndarray:
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(df[f])]
     cat_cols  = [f for f in features if f not in num_cols]
@@ -44,7 +44,7 @@ def build_cluster_X(df: pd.DataFrame, features: list[str]) -> np.ndarray:
     return X.values, list(X.columns)
 
 
-# try k=3..8 and pick the value with the highest silhouette score
+# try k=3t o 8  and pick the value with the highest silhouette score
 def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, list]:
     scores = []
     for k in k_range:
@@ -58,7 +58,7 @@ def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, lis
     return best_k, scores
 
 
-# summarize one cluster: size, severe rate, and top category per profile column
+# summarize one cluster, size, severe rate, and top category per profile column
 def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int) -> dict:
     pct = len(df_cluster) / n_total * 100
     row = {"cluster": cluster_id, "n": len(df_cluster), "pct_of_ads": round(pct, 1),
@@ -73,7 +73,7 @@ def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int) -> 
     return row
 
 
-# module-level storage for global nav flag means, used to compute per-cluster lift
+# storage for global nav flag means, used to compute per-cluster lift
 _GLOBAL_NAV_MEANS: dict[str, float] = {}
 
 
@@ -154,7 +154,7 @@ def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     return f"{core} — {severe_rate:.0f}% severe"
 
 
-# produce six-panel cluster diagnostics figure: silhouette, sizes, severe rates, roadway breakdown
+# produce 6 panel cluster  figure: silhouette, sizes, severe rates, roadway breakdown
 def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
                         sil_scores: list) -> None:
     fig_dir = bc.CLUSTERING_DIR
@@ -227,7 +227,7 @@ def main() -> None:
     df_known = bc.load_known()
     df_known = nu.attach_narrative_flags(df_known)
 
-    # filter to ADS incidents, attach narrative flags, build feature matrix
+    # filter to ADS incidents, attach narrative flags nad build feature matrix
     ads_df = df_known[df_known["automation_level"] == "ADS"].copy()
     print(f"   ADS incidents: {len(ads_df)}  |  severe rate: {ads_df['severe'].mean()*100:.1f}%")
 
@@ -241,7 +241,7 @@ def main() -> None:
     print("\n   Selecting k via silhouette score:")
     best_k, sil_scores = pick_k(X)
 
-    # fit final k-means with best k and assign cluster labels to each incident
+    # fit final k-means with best k and then assign cluster labels to each incident
     km = KMeans(n_clusters=best_k, random_state=42, n_init=20)
     ads_df = ads_df.copy()
     ads_df["cluster"] = km.fit_predict(X)

@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings("ignore")
 
-# set up project paths and create output directories
+# project paths ,   output directories
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = PROJECT_ROOT / "Cleaned" / "sgo_cleaned_incidents.csv"
 OUT_DIR         = PROJECT_ROOT / "Modeling"
@@ -75,7 +75,7 @@ def context_features(df_known: pd.DataFrame) -> list[str]:
     return [f for f in CONTEXT_FEATURES_BASE if f in df_known.columns]
 
 
-# impute, one-hot encode, and align feature matrix; optionally reindex to training columns
+# fill in missing values, one-hot encode, and align feature matrix; optionally reindex to training columns
 def prepare_X(
     df_in: pd.DataFrame,
     feature_cols: list[str],
@@ -92,7 +92,7 @@ def prepare_X(
     return X, num_cols, list(X.columns)
 
 
-# standardize numeric features for logistic regression, fitting on train only
+# standardize numeric features for logistic regression, fit on train only
 def scale_for_lr(
     X_train_raw: pd.DataFrame,
     X_test_raw: pd.DataFrame,
@@ -107,7 +107,7 @@ def scale_for_lr(
     return X_train, X_test
 
 
-# compute and print precision, recall, F1, AUC, and false-negative rate
+# compute and then print precision, recall, F1, AUC, and false-negative rate
 def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     tn, fp, fn, tp = cm.ravel()
@@ -141,7 +141,7 @@ def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
     }
 
 
-# verbose wrapper — loads data, prints class distribution, returns train/test splits
+# loads data, prints class distribution, returns train/test splits
 def load_and_split_verbose() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     print("=" * 70)
     print("1. Loading cleaned data")

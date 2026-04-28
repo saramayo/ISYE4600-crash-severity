@@ -21,7 +21,7 @@ print("=" * 70)
 print("Loading 4 raw files")
 print("=" * 70)
 raw = {}
-# load files, add automation and era
+# load files, add automation and era (yearss)
 for name, (path, enc, lvl, era) in FILES.items():
     df = pd.read_csv(path, encoding=enc, low_memory=False)
     df["automation_level"] = lvl
@@ -71,7 +71,7 @@ print("\n" + "=" * 70)
 print("Step 5: Building severity component flags")
 print("=" * 70)
 
-# convert yes/no text responses to 1.0/0.0/NaN binary flags
+# convert yes/no text responses to 1.0/0.0 
 def yes_flag(s: pd.Series) -> pd.Series:
     s_str = s.astype(str).str.strip().str.lower()
     out = pd.Series(np.nan, index=s.index, dtype="float")

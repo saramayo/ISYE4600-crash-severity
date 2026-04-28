@@ -42,7 +42,7 @@ TABULAR_FEATURES = [
 ]
 
 
-# impute, one-hot encode, and scale features; align test to train column schema
+# fill in missing values, one-hot encode, and scale features; align test to train column schema
 def build_X(train: pd.DataFrame, test: pd.DataFrame, features: list[str]):
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(train[f])]
     cat_cols = [f for f in features if f not in num_cols]
@@ -122,13 +122,13 @@ def main() -> None:
     print("2. Narrative flag prevalence")
     print("=" * 70)
 
-    # print prevalence of each narrative flag across all known-severity incidents
+    # print  of each narrative flag across all known-severity incidents
     flag_df = df_known[nu.NAV_FEATURES]
     prev = flag_df.mean().sort_values(ascending=False)
     for feat, rate in prev.items():
         print(f"     {feat:<30}  {rate*100:5.1f}%")
 
-    # save per-flag descriptions and severe vs. non-severe prevalence rates to CSV
+    # save flag descriptions and severe vs. non-severe prevalence rates to CSV
     desc_rows = []
     for feat in nu.NAV_FEATURES:
         desc_rows.append({

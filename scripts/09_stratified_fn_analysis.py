@@ -23,7 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-# impute, encode, and scale features, aligning test columns to train schema
+# fill in missing values, encode, and scale features, align test columns to train schema
 def build_X(train, test, features):
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(train[f])]
     cat_cols  = [f for f in features if f not in num_cols]
@@ -150,7 +150,7 @@ def main() -> None:
     print("Reproducing LR [L2] to extract false negatives")
     print("=" * 70)
 
-    # reproduce LR-L2 model with same hyperparameters to extract its false negatives
+    # reproduce LR-L2 model with same hyperparameters to extract  false negatives
     l2_df    = df_known[df_known["automation_level"] == "L2"].copy()
     train_l2 = l2_df[l2_df["era"] == "archived"].copy()
     test_l2  = l2_df[l2_df["era"] == "current"].copy()
