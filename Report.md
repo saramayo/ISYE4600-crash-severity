@@ -8,34 +8,53 @@ April 27, 2026
 
 ## 1. Problem statement and goal
 
-Companies that test self driving cars in the United States have to send a crash report to NHTSA under the Standing General Order (SGO). The reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and vehicles that use a Level 2 driver assist (L2, like Tesla Autopilot). The data set is public, but each report is hand written and uses different formats across companies and across years.
+Companies that test self driving cars in the United States are reuqired to send a crash report to NHTSA under the Standing General Order (SGO). These reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and vehicles that use a Level 2 driver assist (L2, like Tesla Autopilot). We used this public data set, however each report was hand written and used different formats that varied according to the company and the year it was published.
 
-A safety analyst who reads these reports has a simple question: which incidents are likely to be **severe**? In our project a crash is severe if at least one of these things is true:
+Some of the information and features that were included in each incident report are:
+
+- Identifiers and timing: report id, report version, same incident id, report month and year.
+- Vehicle context: automation level (ADS or L2), if the system was engaged at the time, manufacturer, model and model year of the subject vehicle, and a VIN flag.
+
+- Roadway context: roadway type (street, highway / freeway, intersection, parking lot, etc), work zone flag, traffic incident flag.
+- Weather flags: clear, cloudy, rain, snow, fog or smoke or haze, severe wind.
+- Crash dynamics: crash partner ("Crash With", for example passenger car, SUV, heavy truck, animal, fixed object, pedestrian or cyclist), pre crash movement of the subject vehicle and of the counterpart vehicle, and a reported pre crash speed in miles per hour.
+
+- Severity components used to build the label: highest reported injury level, airbag deployment, vehicle towed.
+
+- Free text narrative: a short description that is written by the reporting company. From this we extract 21 binary scenario flags (for example, AV stopped, AV moving, AV in parking lot, other vehicle approached from behind, intersection, vulnerable road user). 
+
+A safety analyst who reads these reports will need to define which incidents to focus on in order to maximize the safety improvement. To allow this proper focus, we propose a simple question to : which incidents are likely to be **severe**? Incidents that are likely to be severe will allow these analysts to spend the most time in analyzing situations that lead to severe outcomes.
+
+In our project we consider that a crash is severe if at least one of these things is true:
 
 - the highest reported injury is moderate or worse,
 - the airbag was deployed for the subject vehicle, or
-- some vehicle had to be towed.
+- some vehicle was  towed.
 
-This is the rule used in the SGO public summary, so we kept it. We want to build a model that, given the structured fields and the short narrative the company writes, returns a probability that the incident is severe. The goal is not to replace the human review. The goal is to put the most likely severe cases on top so the analyst spends time where it matters.
+This was the rule that was used in the SGO public summary. Our project aims to build a model that, given the incident with  structured fields and the short narrative the company writes- which is unstructured, returns a probability that the incident is severe. Our aim is not to replace the human review, but instead to flag the most likely severe cases on top so the analyst spends time where it matters the most.
 
-The dataset is small for machine learning standards (around 5,500 incidents after cleaning) and the reports change over time, so the project is also a study of what is possible with this kind of public data.
+
+Since the dataset we used is relatively small (around 5,500 incidents after cleaning) and the reports change over time, so the project is also a test of what is possible with this amount of public data. 
 
 ---
 
 ## 2. Data
 
-**Source.** Four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. Together they cover roughly mid-2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a natural temporal split.
+**Source.** Four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. These  cover a timeframe from mid-2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a natural temporal split that will be used.
 
-**Unit of analysis.** One row per **unique incident**. The raw files contain one row per *report version*, and a single crash can have many versions and even many vehicles (subject + counterpart). Script `01_clean_incidents.py` keeps the latest version for each report id, then groups by `Same Incident ID` so the model sees one example per real-world event.
+**Unit of analysis.** One row per **unique incident**. The raw files contain one row per *report version*, and a single crash can have many versions and even many vehicles (subject + counterpart). We used the script:  `01_clean_incidents.py` in order to keep the latest version for each report id, we then group by `Same Incident ID` so the model sees one example for each real-world crash.
 
-**Target.** A binary label `severe` defined by the OR rule above. To avoid imputing the outcome, we also keep a flag `severity_known` and only train and test on rows where at least one component is observed. Out of 5,576 unique incidents, 5,567 have at least one severity signal, of which 4,063 are severe and 1,504 are not.
+**Severity Target.** We use binary label `severe` which is defined by the OR rule above. To avoid directly representing the outcome, we keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
 
-**Features.** Two groups:
+**Features.** 
 
-1. *Structured (tabular)* fields from the report form: roadway type, weather flags, crash partner, pre crash movement of subject and counterpart vehicles, speed, automation engagement, month, etc.
-2. *Narrative flags* extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario only, like `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We do **not** use words like "injured", "towed", or "airbag" as features, because those words define the label. Adding them would be label leakage.
+We divide these into two groups, what we get directly from the tabular fields in the incidents reports, and what we extract from the free text narrative.
 
-**Preprocessing.** Numeric columns are filled with the median, categorical columns are filled with the string `"Unknown"`. For each column with missing values we add an `is_missing` indicator before imputation. Categorical columns are one hot encoded for the linear models.
+1. *Structured (tabular)* These structured fields are pulled directly from the report: roadway type, weather flags, crash partner, pre crash movement of subject and counterpart vehicles, speed, automation engagement, month, etc. 
+
+2. *Narrative flags* These, like mentioned above are extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario , like `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We have purposefully excluded words like  like "injured", "towed", or "airbag" as features, since those words define the label rule above, os adding these would be a label leakage and would defeat the purpose on this additional training and learning.
+
+**Preprocessing.** The numeric columns are filled with the median, and the categorical columns are filled with the string `"Unknown"`. For each column that has missing values we add an `is_missing` binary indicator before imputation. The categorical columns are then one hot encoded for the linear models.
 
 **Train / test split.** A *temporal* split: train on the archived era, test on the current era. This is harder than a random split (the severe rate changes between eras, see Section 3), but it is the only fair way to imitate deployment. For the stratified models (Section 4) we also reserve 25% of the training data as a validation set for hyperparameter and threshold tuning.
 
@@ -50,11 +69,13 @@ Table 1. Counts and severe rates by era and automation level (after cleaning).
 
 ---
 
-## 3. What we tried first and why it did not work
+## 3.Our first iteration, and why it was not succesful. 
 
-A natural first attempt is to train **one logistic regression** on the union of ADS and L2 with a temporal split, balanced class weights, and `automation_level` as a feature. This is what `02_run_baselines.py` does.
+Our first attempt was to train **one logistic regression** on the combination of the ADS and L2 with a temporal split, balanced class weights, and `automation_level` as a feature. 
 
-The pooled metrics on the test set look fine on the surface (`baseline_results.csv`):
+This is what our script : `02_run_baselines.py` does.
+
+The pooled metrics on the test set look fine : (`baseline_results.csv`):
 
 | Slice | Precision | Recall | F1 | AUC | FN rate |
 |---|---|---|---|---|---|
