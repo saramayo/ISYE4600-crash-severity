@@ -67,6 +67,10 @@ We divide these into two groups, what we get directly from the tabular fields in
 
 Table 1. Counts and severe rates by era and automation level (after cleaning).
 
+The figure below shows the same picture in a different way. The left panel is the severe vs non severe count on all labeled rows. The right panel shows, among severe incidents, what share fires each component of the OR rule. The "vehicle towed" signal is the most common one, the "moderate or worse injury" signal is the least common.
+
+![Severity label distribution and the share of each OR component among severe rows.](Presentation/figures/01_severity_outcome_and_label_components.png)
+
 ---
 
 ## 3.Our first iteration, and why it was not succesful. 
@@ -95,6 +99,8 @@ The pooled F1 of 0.835 hides the real story. When we slice the same predictions 
 2. **Class proxy.** The pooled model picks up the variable `automation_level` as a strong proxy for severity (because L2 is almost always severe in the training set). It learns a quick rule like "L2 yes, ADS no", which works on average but is useless for the case we actually care about, the ADS reports.
 
 Figure `Presentation/figures/04_reporting_bias_severe_rate_by_stratum.png` shows the strong gap in severe rate between L2 and ADS, which is exactly what the pooled model picks up on.
+
+![Severe rate by era and automation level. ADS goes from 26% in archived to 47% in current; L2 stays close to 98% in both eras.](Presentation/figures/04_reporting_bias_severe_rate_by_stratum.png)
 
 This is the failure mode we wanted to fix.
 
@@ -222,6 +228,10 @@ Table 6. ADS scenario clusters (k = 7).
 The biggest cluster (C2) is the typical "AV stopped, low speed bump" type. The most severe one, C5, is "AV moving at impact". These are the cases the operations team would want to see first if a model flags them. The animal cluster has zero severe cases, which is consistent with how those incidents are reported.
 
 We also ran the same clustering on L2 (`11_cluster_profiling_by_level.py --level L2`) for symmetry. Almost every L2 cluster is at 95% to 100% severe, so the clustering for L2 is mostly about scenario type, not about severity contrast.
+
+The figure below brings together the parts of the ADS clustering that are useful to read at once. The top left panel is the silhouette score against `k` from 3 to 8, with a dashed line at the value chosen by the maximum (k = 7). The next two panels show the cluster sizes and the severe rate per cluster compared with the overall ADS average. The bottom panels show the roadway type distribution per cluster and the human readable scenario label table that we used in Table 6.
+
+![ADS clustering summary: silhouette score by k, cluster sizes, severe rate per cluster, roadway type per cluster, and the scenario label table.](Modeling/clustering/kmeans_cluster_profiles_figure.png)
 
 ---
 
