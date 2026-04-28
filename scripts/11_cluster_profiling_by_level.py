@@ -23,6 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# columns used to characterize each cluster's dominant crash context
 PROFILE_COLS = [
     "Roadway Type",
     "Crash With",
@@ -30,9 +31,11 @@ PROFILE_COLS = [
     "CP Pre-Crash Movement",
 ]
 
+# module-level storage for global nav flag means, used to compute per-cluster lift
 _GLOBAL_NAV_MEANS: dict[str, float] = {}
 
 
+# impute, encode, and standardize features into a numpy array for k-means
 def build_cluster_X(df: pd.DataFrame, features: list[str]) -> tuple[np.ndarray, list]:
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(df[f])]
     cat_cols = [f for f in features if f not in num_cols]
@@ -45,6 +48,7 @@ def build_cluster_X(df: pd.DataFrame, features: list[str]) -> tuple[np.ndarray, 
     return X.values, list(X.columns)
 
 
+# try k=3..8 and pick the value with the highest silhouette score
 def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, list]:
     scores = []
     for k in k_range:
@@ -58,6 +62,7 @@ def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, lis
     return best_k, scores
 
 
+# summarize one cluster: size, severe rate, automation level, and top category per profile column
 def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int, level: str) -> dict:
     pct = len(df_cluster) / n_total * 100
     row = {
@@ -77,6 +82,7 @@ def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int, lev
     return row
 
 
+# assign a human-readable scenario label based on crash profile and dominant nav flag lift
 def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     roadway = profile.get("top_Roadway_Type", "")
     sv_move = profile.get("top_SV_Pre-Crash_Movement", "")
@@ -153,6 +159,7 @@ def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     return f"{core} — {severe_rate:.0f}% severe"
 
 
+# produce six-panel cluster diagnostics figure for the chosen automation level
 def make_cluster_figure(
     df_slice: pd.DataFrame,
     profiles: list[dict],
@@ -232,6 +239,7 @@ def make_cluster_figure(
     print(f"\n   Figure: {out_png}")
 
 
+# accept --level argument to select which automation level to cluster
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="K-means clustering by automation_level (symmetry with script 10).")
     p.add_argument(
@@ -252,6 +260,7 @@ def main() -> None:
     print(f"{level} crash scenario clustering (by-level symmetry script)")
     print("=" * 70)
 
+    # load data with narrative flags and validate the requested automation level exists
     df_known = bc.load_known()
     df_known = nu.attach_narrative_flags(df_known)
 
@@ -277,6 +286,7 @@ def main() -> None:
     print("\n   Selecting k via silhouette score:")
     best_k, sil_scores = pick_k(X)
 
+    # fit final k-means with best k and assign cluster labels to each incident
     km = KMeans(n_clusters=best_k, random_state=42, n_init=20)
     slice_df = slice_df.copy()
     slice_df["cluster"] = km.fit_predict(X)
@@ -289,6 +299,7 @@ def main() -> None:
     print("Cluster profiles")
     print("=" * 70)
 
+    # profile and label each cluster, printing nav flag lift signals
     profiles = []
     for cid in sorted(slice_df["cluster"].unique()):
         sub = slice_df[slice_df["cluster"] == cid]
@@ -315,6 +326,7 @@ def main() -> None:
 
     bc.CLUSTERING_DIR.mkdir(parents=True, exist_ok=True)
 
+    # save cluster assignments and summary CSV, then generate the diagnostics figure
     out_csv = bc.CLUSTERING_DIR / f"{prefix}_cluster_assignments.csv"
     save_cols = ["cluster"] + [c for c in slice_df.columns if c != "cluster"]
     slice_df[save_cols].to_csv(out_csv, index=False)

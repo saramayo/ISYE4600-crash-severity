@@ -23,6 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+# impute, encode, and scale features, aligning test columns to train schema
 def build_X(train, test, features):
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(train[f])]
     cat_cols  = [f for f in features if f not in num_cols]
@@ -42,6 +43,7 @@ def build_X(train, test, features):
     return Xtr, Xte
 
 
+# print top-5 values for key columns among the missed severe crashes
 def profile_fn(fn_df: pd.DataFrame, label: str) -> None:
     print(f"\n  [{label}] — {len(fn_df)} missed severe crashes")
     for col in ["Roadway Type", "Crash With", "SV Pre-Crash Movement",
@@ -53,6 +55,7 @@ def profile_fn(fn_df: pd.DataFrame, label: str) -> None:
                 print(f"      {v:<40} {c:>4} ({c/len(fn_df)*100:.0f}%)")
 
 
+# plot horizontal bar charts of missed-crash profiles for XGB-ADS and LR-L2
 def make_fn_figure(fn_ads: pd.DataFrame, fn_l2: pd.DataFrame) -> None:
     fig_dir = bc.PROJECT_ROOT / "Presentation" / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -98,13 +101,11 @@ def main() -> None:
 
     summary_rows = []
 
-    # ------------------------------------------------------------------
-    # XGB — ADS
-    # ------------------------------------------------------------------
     print("\n" + "=" * 70)
     print("Reproducing XGB [ADS] to extract false negatives")
     print("=" * 70)
 
+    # reproduce XGB-ADS model with same hyperparameters to extract its false negatives
     ads_df   = df_known[df_known["automation_level"] == "ADS"].copy()
     train_df = ads_df[ads_df["era"] == "archived"].copy()
     test_df  = ads_df[ads_df["era"] == "current"].copy()
@@ -127,6 +128,7 @@ def main() -> None:
     prob   = xgb.predict_proba(X_test)[:, 1]
     y_pred = (prob >= 0.46).astype(int)
 
+    # collect missed severe ADS crashes, profile them, and save to CSV
     fn_mask   = (y_pred == 0) & (y_test == 1)
     fn_ads_df = test_df[fn_mask].copy()
     fn_ads_df["y_prob"] = prob[fn_mask]
@@ -144,13 +146,11 @@ def main() -> None:
             if "Crash With" in fn_ads_df.columns and len(fn_ads_df) else "N/A",
     })
 
-    # ------------------------------------------------------------------
-    # LR — L2
-    # ------------------------------------------------------------------
     print("\n" + "=" * 70)
     print("Reproducing LR [L2] to extract false negatives")
     print("=" * 70)
 
+    # reproduce LR-L2 model with same hyperparameters to extract its false negatives
     l2_df    = df_known[df_known["automation_level"] == "L2"].copy()
     train_l2 = l2_df[l2_df["era"] == "archived"].copy()
     test_l2  = l2_df[l2_df["era"] == "current"].copy()
@@ -168,6 +168,7 @@ def main() -> None:
     prob_l2   = lr.predict_proba(X_test_l2)[:, 1]
     y_pred_l2 = (prob_l2 >= 0.20).astype(int)
 
+    # collect missed severe L2 crashes, profile them, and save to CSV
     fn_mask_l2 = (y_pred_l2 == 0) & (y_test_l2 == 1)
     fn_l2_df   = test_l2[fn_mask_l2].copy()
     fn_l2_df["y_prob"] = prob_l2[fn_mask_l2]
@@ -185,6 +186,7 @@ def main() -> None:
             if "Crash With" in fn_l2_df.columns and len(fn_l2_df) else "N/A",
     })
 
+    # save combined FN summary CSV and generate the false-negative figure
     pd.DataFrame(summary_rows).to_csv(bc.LR_DIR / "fn_summary.csv", index=False)
     print("\n" + "=" * 70)
     print("FN Summary")

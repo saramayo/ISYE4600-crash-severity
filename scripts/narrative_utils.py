@@ -6,6 +6,7 @@ import re
 import pandas as pd
 
 
+# list of binary narrative flag names produced by regex extraction
 NAV_FEATURES = [
     "nav_av_stopped",
     "nav_av_moving",
@@ -30,6 +31,7 @@ NAV_FEATURES = [
     "nav_minor_damage_lang",
 ]
 
+# human-readable descriptions for each narrative flag, used in reports
 NAV_DESCRIPTIONS = {
     "nav_av_stopped":        "AV was stopped/parked/stationary at time of impact",
     "nav_av_moving":         "AV was traveling/proceeding at time of impact",
@@ -54,6 +56,7 @@ NAV_DESCRIPTIONS = {
     "nav_minor_damage_lang": '"Minor damage" or "no visible damage" language present',
 }
 
+# precompile patterns to strip regulatory boilerplate and redaction tokens from narratives
 _HEADER_PAT = re.compile(
     r"(?:Pursuant to|Under|Filed under|Submitted pursuant to|In accordance with)"
     r".*?(?:Standing General Order|SGO).*?(?:\.\s+|\n)",
@@ -65,6 +68,7 @@ _WAYMO_SUPPLEMENT = re.compile(
 )
 
 
+# strip boilerplate headers and redaction markers, return cleaned narrative text
 def clean_narrative(text: str) -> str:
     if pd.isna(text):
         return ""
@@ -76,14 +80,15 @@ def clean_narrative(text: str) -> str:
     return text.strip()
 
 
+# flag narratives that are fully redacted, confidential, or blank
 def is_redacted(text: str) -> bool:
     if pd.isna(text):
         return True
     return bool(re.search(r"REDACTED|CBI|CONFIDENTIAL", str(text), re.IGNORECASE))
 
 
+# run all regex patterns against one narrative and return a binary flag dict
 def extract_narrative_features(raw_text: str) -> dict:
-    # Zeros if redacted or very short text
     flags = {f: 0 for f in NAV_FEATURES}
     flags["nav_has_narrative"] = 0
 
@@ -220,6 +225,7 @@ def extract_narrative_features(raw_text: str) -> dict:
     return flags
 
 
+# apply feature extraction to every row and join binary flags back to the dataframe
 def attach_narrative_flags(df: pd.DataFrame, narrative_col: str = "Narrative") -> pd.DataFrame:
     flag_records = df[narrative_col].apply(extract_narrative_features)
     flag_df = pd.DataFrame(list(flag_records), index=df.index)

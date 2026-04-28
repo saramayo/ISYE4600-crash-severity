@@ -22,6 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+# columns used to characterize each cluster's dominant crash context
 PROFILE_COLS = [
     "Roadway Type",
     "Crash With",
@@ -30,6 +31,7 @@ PROFILE_COLS = [
 ]
 
 
+# impute, encode, and standardize features into a numpy array for k-means
 def build_cluster_X(df: pd.DataFrame, features: list[str]) -> np.ndarray:
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(df[f])]
     cat_cols  = [f for f in features if f not in num_cols]
@@ -42,6 +44,7 @@ def build_cluster_X(df: pd.DataFrame, features: list[str]) -> np.ndarray:
     return X.values, list(X.columns)
 
 
+# try k=3..8 and pick the value with the highest silhouette score
 def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, list]:
     scores = []
     for k in k_range:
@@ -55,6 +58,7 @@ def pick_k(X: np.ndarray, k_range=range(3, 9), seed: int = 42) -> tuple[int, lis
     return best_k, scores
 
 
+# summarize one cluster: size, severe rate, and top category per profile column
 def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int) -> dict:
     pct = len(df_cluster) / n_total * 100
     row = {"cluster": cluster_id, "n": len(df_cluster), "pct_of_ads": round(pct, 1),
@@ -69,22 +73,22 @@ def profile_cluster(df_cluster: pd.DataFrame, cluster_id: int, n_total: int) -> 
     return row
 
 
+# module-level storage for global nav flag means, used to compute per-cluster lift
 _GLOBAL_NAV_MEANS: dict[str, float] = {}
 
 
+# assign a human-readable scenario label based on crash profile and dominant nav flag lift
 def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     roadway    = profile.get("top_Roadway_Type", "")
     sv_move    = profile.get("top_SV_Pre-Crash_Movement", "")
     crash_with = profile.get("top_Crash_With", "")
     severe_rate = profile.get("severe_rate", 0)
 
-    # Animal / fixed object: easy to name
     if "Animal" in crash_with:
         return f"Animal strike — {severe_rate:.0f}% severe"
     if "Fixed Object" in crash_with or "Other Fixed Object" in crash_with:
         return f"AV hit fixed object — {severe_rate:.0f}% severe"
 
-    # Which nav_* flag stands out vs whole ADS set
     nav_cols = [c for c in df_cluster.columns if c.startswith("nav_")]
     if nav_cols and _GLOBAL_NAV_MEANS:
         cluster_means = df_cluster[nav_cols].mean()
@@ -122,7 +126,6 @@ def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
         "nav_av_moving":         "AV moving at impact",
     }
 
-    # Road type bucket
     if "Highway" in roadway or "Freeway" in roadway:
         ctx = "Highway"
     elif "Intersection" in roadway:
@@ -132,7 +135,6 @@ def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     else:
         ctx = "Street"
 
-    # Short label for SV movement
     if "Stopped" in sv_move or "Parked" in sv_move:
         sv = "AV stopped"
     elif "Left Turn" in sv_move or "Right Turn" in sv_move:
@@ -152,6 +154,7 @@ def label_cluster(profile: dict, df_cluster: pd.DataFrame) -> str:
     return f"{core} — {severe_rate:.0f}% severe"
 
 
+# produce six-panel cluster diagnostics figure: silhouette, sizes, severe rates, roadway breakdown
 def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
                         sil_scores: list) -> None:
     fig_dir = bc.CLUSTERING_DIR
@@ -160,7 +163,6 @@ def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
     fig = plt.figure(figsize=(16, 10))
     gs  = fig.add_gridspec(2, 3, hspace=0.45, wspace=0.35)
 
-    # Silhouette vs k
     ax_sil = fig.add_subplot(gs[0, 0])
     ks     = [t[0] for t in sil_scores]
     sils   = [t[1] for t in sil_scores]
@@ -170,7 +172,6 @@ def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
     ax_sil.set_title("Silhouette score vs k (ADS)", fontweight="semibold")
     ax_sil.set_xlabel("k"); ax_sil.set_ylabel("Silhouette score")
 
-    # Cluster sizes
     ax_sz = fig.add_subplot(gs[0, 1])
     labels = [f"C{p['cluster']}" for p in profiles]
     sizes  = [p["n"] for p in profiles]
@@ -178,7 +179,6 @@ def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
     ax_sz.set_title("Cluster sizes (ADS)", fontweight="semibold")
     ax_sz.set_xlabel("Cluster"); ax_sz.set_ylabel("Incidents")
 
-    # Severe % per cluster
     ax_sv = fig.add_subplot(gs[0, 2])
     rates  = [p["severe_rate"] for p in profiles]
     colors = ["#C44E52" if r >= 50 else "#4C72B0" for r in rates]
@@ -189,7 +189,6 @@ def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
     ax_sv.set_xlabel("Cluster"); ax_sv.set_ylabel("% severe")
     ax_sv.legend(fontsize=8)
 
-    # Roadway type stacked bars
     ax_rd = fig.add_subplot(gs[1, :2])
     road_col = "Roadway Type"
     if road_col in df_ads.columns:
@@ -200,7 +199,6 @@ def make_cluster_figure(df_ads: pd.DataFrame, profiles: list[dict], k: int,
         ax_rd.tick_params(axis="x", rotation=0)
         ax_rd.legend(fontsize=7, loc="upper right", ncol=2)
 
-    # Label text
     ax_tbl = fig.add_subplot(gs[1, 2])
     ax_tbl.axis("off")
     tbl_data = [[f"C{p['cluster']}", p.get("scenario_label", "—")[:45]] for p in profiles]
@@ -229,6 +227,7 @@ def main() -> None:
     df_known = bc.load_known()
     df_known = nu.attach_narrative_flags(df_known)
 
+    # filter to ADS incidents, attach narrative flags, build feature matrix
     ads_df = df_known[df_known["automation_level"] == "ADS"].copy()
     print(f"   ADS incidents: {len(ads_df)}  |  severe rate: {ads_df['severe'].mean()*100:.1f}%")
 
@@ -242,11 +241,11 @@ def main() -> None:
     print("\n   Selecting k via silhouette score:")
     best_k, sil_scores = pick_k(X)
 
+    # fit final k-means with best k and assign cluster labels to each incident
     km = KMeans(n_clusters=best_k, random_state=42, n_init=20)
     ads_df = ads_df.copy()
     ads_df["cluster"] = km.fit_predict(X)
 
-    # Means for lift in label_cluster
     nav_cols_present = [c for c in ads_df.columns if c.startswith("nav_")]
     _GLOBAL_NAV_MEANS.update(ads_df[nav_cols_present].mean().to_dict())
 
@@ -254,6 +253,7 @@ def main() -> None:
     print("Cluster profiles")
     print("=" * 70)
 
+    # profile and label each cluster, printing nav flag lift signals
     profiles = []
     for cid in sorted(ads_df["cluster"].unique()):
         sub = ads_df[ads_df["cluster"] == cid]
@@ -280,6 +280,7 @@ def main() -> None:
 
     bc.CLUSTERING_DIR.mkdir(parents=True, exist_ok=True)
 
+    # save cluster assignments and summary CSV, then generate the figure
     out_csv = bc.CLUSTERING_DIR / "ads_cluster_assignments.csv"
     save_cols = ["cluster"] + [c for c in ads_df.columns if c != "cluster"]
     ads_df[save_cols].to_csv(out_csv, index=False)

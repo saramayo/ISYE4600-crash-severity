@@ -21,6 +21,7 @@ DATA_PATH = PROJECT_ROOT / "Cleaned" / "sgo_cleaned_incidents.csv"
 OUT_DIR = PROJECT_ROOT / "Modeling" / "logistic_regression"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# tabular features used in all LR experiments
 TABULAR_FEATURES = [
     "Automation System Engaged?",
     "Roadway Type",
@@ -41,6 +42,7 @@ TABULAR_FEATURES = [
 ]
 
 
+# impute, one-hot encode, and scale features; align test to train column schema
 def build_X(train: pd.DataFrame, test: pd.DataFrame, features: list[str]):
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(train[f])]
     cat_cols = [f for f in features if f not in num_cols]
@@ -66,6 +68,7 @@ def build_X(train: pd.DataFrame, test: pd.DataFrame, features: list[str]):
     return Xtr, Xte
 
 
+# compute precision, recall, F1, AUC, and FN rate, print and return as dict
 def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     tn, fp, fn, tp = cm.ravel()
@@ -89,6 +92,7 @@ def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
                 TP=tp, FP=fp, FN=fn, TN=tn, fn_rate=fn_rate)
 
 
+# fit balanced logistic regression and return evaluated metrics dict
 def run_lr(X_train, X_test, y_train, y_test, name: str) -> dict:
     lr = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0, solver="lbfgs")
     lr.fit(X_train, y_train)
@@ -102,6 +106,7 @@ def main() -> None:
     print("1. Loading cleaned data")
     print("=" * 70)
 
+    # load cleaned data, filter to known severity, attach narrative flags, split by era
     df = pd.read_csv(DATA_PATH, low_memory=False)
     df_known = df[df["severity_known"] == 1].copy()
     print(f"   severity_known=1 rows: {len(df_known)}")
@@ -113,16 +118,17 @@ def main() -> None:
     print(f"   Train (archived): {len(train_df)} | severe rate {train_df['severe'].mean()*100:.1f}%")
     print(f"   Test  (current):  {len(test_df)}  | severe rate {test_df['severe'].mean()*100:.1f}%")
 
-    # Flag stats csv
     print("\n" + "=" * 70)
     print("2. Narrative flag prevalence")
     print("=" * 70)
 
+    # print prevalence of each narrative flag across all known-severity incidents
     flag_df = df_known[nu.NAV_FEATURES]
     prev = flag_df.mean().sort_values(ascending=False)
     for feat, rate in prev.items():
         print(f"     {feat:<30}  {rate*100:5.1f}%")
 
+    # save per-flag descriptions and severe vs. non-severe prevalence rates to CSV
     desc_rows = []
     for feat in nu.NAV_FEATURES:
         desc_rows.append({
@@ -135,11 +141,11 @@ def main() -> None:
     pd.DataFrame(desc_rows).to_csv(OUT_DIR / "narrative_feature_descriptions.csv", index=False)
     print("\n   Saved narrative_feature_descriptions.csv")
 
-    # ADS only: tabular vs + narrative
     print("\n" + "=" * 70)
     print("3. ADS-only model: tabular vs tabular+narrative vs narrative-only")
     print("=" * 70)
 
+    # compare tabular-only, combined, and narrative-only models on ADS subset
     ads_train = train_df[train_df["automation_level"] == "ADS"].copy()
     ads_test = test_df[test_df["automation_level"] == "ADS"].copy()
     print(f"   ADS train: {len(ads_train)} (severe={ads_train['severe'].sum()})")
@@ -161,6 +167,7 @@ def main() -> None:
     ads_results.to_csv(OUT_DIR / "narrative_ads_model_comparison.csv", index=False)
     print("\n   Saved narrative_ads_model_comparison.csv")
 
+    # refit combined ADS model, extract and print narrative feature coefficients
     lr_final = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0, solver="lbfgs")
     lr_final.fit(X_tr_comb, ads_train["severe"])
     coef_df = pd.DataFrame({
@@ -171,11 +178,11 @@ def main() -> None:
     print("\n   Narrative feature coefficients (combined ADS model):")
     print(nav_coefs.to_string(index=False))
 
-    # Pooled ADS+L2
     print("\n" + "=" * 70)
     print("4. Pooled model: tabular (no automation_level) vs + narrative features")
     print("=" * 70)
 
+    # run pooled model comparisons without automation_level as a feature
     TABULAR_NO_LEVEL = [f for f in TABULAR_FEATURES if f != "automation_level"]
 
     X_tr_p, X_te_p = build_X(train_df, test_df, TABULAR_NO_LEVEL)

@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-# Put matplotlib cache in project folder (fewer permission issues)
 _ROOT = Path(__file__).resolve().parent.parent
 _MPL = _ROOT / ".mplconfig"
 _MPL.mkdir(exist_ok=True)
@@ -26,15 +25,16 @@ from sklearn.preprocessing import StandardScaler
 
 import baseline_common as bc
 
+# set up figure output directory and slide map path
 PROJECT_ROOT = _ROOT
 FIG_DIR = PROJECT_ROOT / "Presentation" / "figures"
 MAP_PATH = PROJECT_ROOT / "Presentation" / "SLIDE_FIGURES.txt"
 
-# Slide-friendly aspect (16:9) and DPI
 FIG_KW = dict(dpi=150, bbox_inches="tight")
 WIDE = (12.0, 6.75)
 
 
+# save current matplotlib figure as a PNG to FIG_DIR
 def _save(name: str) -> Path:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     p = FIG_DIR / f"{name}.png"
@@ -43,12 +43,14 @@ def _save(name: str) -> Path:
     return p
 
 
+# apply consistent title font, tick size, and spine style to an axis
 def style_axes(ax, title: str) -> None:
     ax.set_title(title, fontsize=14, fontweight="semibold", pad=12)
     ax.tick_params(axis="both", labelsize=11)
     sns.despine(ax=ax)
 
 
+# fig 01 — outcome distribution bar and OR-rule component breakdown among severe incidents
 def fig_severity_and_label_breakdown(df: pd.DataFrame) -> None:
     k = df[df["severity_known"] == 1].copy()
     fig, axes = plt.subplots(1, 2, figsize=WIDE)
@@ -78,6 +80,7 @@ def fig_severity_and_label_breakdown(df: pd.DataFrame) -> None:
     _save("01_severity_outcome_and_label_components")
 
 
+# fig 02 — visual schematic of the OR-rule used to build the binary severity label
 def fig_label_rule_schematic() -> None:
     fig, ax = plt.subplots(figsize=(12, 3.5))
     ax.set_xlim(0, 10)
@@ -102,6 +105,7 @@ def fig_label_rule_schematic() -> None:
     _save("02_severity_label_rule_schematic")
 
 
+# fig 03 — bar chart showing archived train vs current-era test split sizes
 def fig_temporal_split(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=WIDE)
     labs = ["Train\n(archived)", "Test\n(current)"]
@@ -116,6 +120,7 @@ def fig_temporal_split(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     _save("03_temporal_train_test_split")
 
 
+# fig 04 — severe rate by era × automation level, highlighting reporting bias
 def fig_reporting_bias_strata(df: pd.DataFrame) -> None:
     k = df[df["severity_known"] == 1].copy()
     g = k.groupby(["era", "automation_level"], observed=False).agg(
@@ -136,6 +141,7 @@ def fig_reporting_bias_strata(df: pd.DataFrame) -> None:
     _save("04_reporting_bias_severe_rate_by_stratum")
 
 
+# fig 05 — pooled logistic regression precision/recall/F1 bar chart
 def fig_baseline_metrics(br: pd.DataFrame) -> None:
     main = br[br["model"] == "Logistic Regression"].copy()
     if main.empty:
@@ -155,6 +161,7 @@ def fig_baseline_metrics(br: pd.DataFrame) -> None:
     _save("05_baseline_metrics_lr")
 
 
+# fig 06 — confusion matrix heatmap for the pooled LR baseline
 def fig_confusion_heatmaps(br: pd.DataFrame) -> None:
     sub = br[br["model"] == "Logistic Regression"]
     if sub.empty:
@@ -182,6 +189,7 @@ def fig_confusion_heatmaps(br: pd.DataFrame) -> None:
     _save("06_confusion_matrices")
 
 
+# fig 07 — side-by-side metric bars for ADS and L2 stratified models
 def fig_stratified_models(strat: pd.DataFrame) -> None:
     if strat.empty:
         return
@@ -215,6 +223,7 @@ def fig_stratified_models(strat: pd.DataFrame) -> None:
     _save("07_stratified_model_results_ads_l2")
 
 
+# fig 14 — side-by-side confusion matrix heatmaps for ADS and L2 stratified models
 def fig_stratified_confusion_matrices(strat: pd.DataFrame) -> None:
     if strat.empty:
         return
@@ -235,6 +244,7 @@ def fig_stratified_confusion_matrices(strat: pd.DataFrame) -> None:
     _save("14_stratified_confusion_matrices_ads_l2")
 
 
+# fig 15 — grouped bars comparing pooled LR vs stratified ADS model on precision/recall/F1
 def fig_ads_improvement(br: pd.DataFrame, strat: pd.DataFrame) -> None:
     pooled_ads = br[br["model"] == "LR — test [ADS]"]
     strat_ads = strat[strat["automation_level"] == "ADS"]
@@ -264,6 +274,7 @@ def fig_ads_improvement(br: pd.DataFrame, strat: pd.DataFrame) -> None:
     _save("15_ads_pooled_vs_stratified_improvement")
 
 
+# fig 08 — horizontal bar breakdown of roadway type and crash partner in false negatives
 def fig_false_negatives(fn: pd.DataFrame) -> None:
     if fn.empty:
         return
@@ -282,6 +293,7 @@ def fig_false_negatives(fn: pd.DataFrame) -> None:
     _save("08_false_negative_contexts")
 
 
+# fig 09 — top LR odds ratios as horizontal bars, colored by direction
 def fig_odds_ratios(coef_path: Path, top_n: int = 12) -> None:
     coef = pd.read_csv(coef_path)
     coef = coef.reindex(coef["coefficient"].abs().sort_values(ascending=False).index).head(top_n)
@@ -295,6 +307,7 @@ def fig_odds_ratios(coef_path: Path, top_n: int = 12) -> None:
     _save("09_top_odds_ratios_lr")
 
 
+# fig 10 — silhouette curve and PCA scatter for exploratory k-means clustering
 def fig_clustering(df_known: pd.DataFrame) -> None:
     feats = bc.context_features(df_known)
     X_raw, _, _ = bc.prepare_X(df_known, feats)
@@ -303,7 +316,6 @@ def fig_clustering(df_known: pd.DataFrame) -> None:
     if num_cols:
         X[num_cols] = StandardScaler().fit_transform(X[num_cols])
     X = X.fillna(0)
-    # Downsample so it runs faster
     if len(X) > 2500:
         X = X.sample(2500, random_state=42)
 
@@ -336,6 +348,7 @@ def fig_clustering(df_known: pd.DataFrame) -> None:
     _save("10_clustering_silhouette_and_pca")
 
 
+# fig 11 — interpretation talking-point slide with key findings and caveats
 def fig_interpretation_summary() -> None:
     fig, ax = plt.subplots(figsize=WIDE)
     ax.axis("off")
@@ -360,6 +373,7 @@ def main() -> None:
     sns.set_theme(style="whitegrid", context="talk", font_scale=0.9)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
+    # load data and generate EDA, label, and temporal split figures
     df = pd.read_csv(bc.DATA_PATH, low_memory=False)
     df_known = df[df["severity_known"] == 1].copy()
     train_df, test_df = bc.split_train_test(df_known)
@@ -369,17 +383,19 @@ def main() -> None:
     fig_temporal_split(train_df, test_df)
     fig_reporting_bias_strata(df)
 
+    # load baseline results and generate baseline metrics + confusion matrix figures
     br = pd.read_csv(PROJECT_ROOT / "Modeling" / "baselines" / "baseline_results.csv")
     fig_baseline_metrics(br)
     fig_confusion_heatmaps(br)
 
-    # Primary framing: separate ADS and L2 models
+    # load stratified results and generate stratified model comparison figures
     strat_path = PROJECT_ROOT / "Modeling" / "logistic_regression" / "lr_stratified_by_level_results.csv"
     strat = pd.read_csv(strat_path) if strat_path.exists() else pd.DataFrame()
     fig_stratified_models(strat)
     fig_stratified_confusion_matrices(strat)
     fig_ads_improvement(br, strat)
 
+    # generate FN analysis and odds ratio figures if prior model outputs exist
     fn_path = PROJECT_ROOT / "Modeling" / "logistic_regression" / "false_negatives.csv"
     if fn_path.exists():
         fig_false_negatives(pd.read_csv(fn_path))
@@ -389,6 +405,7 @@ def main() -> None:
     fig_clustering(df_known)
     fig_interpretation_summary()
 
+    # write slide map listing all generated figures in suggested presentation order
     paths = sorted(FIG_DIR.glob("*.png"))
     MAP_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = [

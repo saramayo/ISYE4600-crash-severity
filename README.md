@@ -6,7 +6,7 @@ Santiago Aramayo, Lauren McDonald, Luis Velez
 
 ## Reproducibility (what a grader needs)
 
-Inputs are the four CSVs under **`Data/`** (bundled with the submission). All paths below are relative to the **repository root**.
+Inputs are the four CSVs under **`Data/`** (bundled with the submission). All paths below are relative to the repository root.
 
 **Software:** Python 3 with `pip`. Create a virtual environment and install dependencies:
 
@@ -21,9 +21,7 @@ On **macOS**, install OpenMP before running models that use XGBoost:
 brew install libomp
 ```
 
-(Linux/Windows: if `import xgboost` fails, use the install notes on the XGBoost site for your OS.)
-
-Run Python **from the project root** (the folder that contains `Data/` and `scripts/`). Use either activated venv (`python scripts/...`) or explicit interpreter (`.venv/bin/python scripts/...`).
+Run Python from the project root (the folder that contains `Data/` and `scripts/`). Use either activated venv (`python scripts/...`) or explicit interpreter (`.venv/bin/python scripts/...`).
 
 Splits and models use **`random_state=42`** where applicable so runs are repeatable on the same machine and library versions.
 
@@ -54,7 +52,7 @@ The report should cite **`Modeling/logistic_regression/all_stratified_results.cs
 
 ## Full rerun (report figures and extra analyses)
 
-Optional steps build narrative comparisons, false-negative lists, clustering, and slide PNGs. They assume the minimal steps above have already run.
+Steps build narrative comparisons, false-negative lists, clustering, and slide PNGs. They assume the minimal steps above have already run.
 
 ```bash
 .venv/bin/python scripts/06_narrative_features.py
@@ -63,7 +61,7 @@ Optional steps build narrative comparisons, false-negative lists, clustering, an
 .venv/bin/python scripts/make_presentation_figures.py
 ```
 
-Optional L2 clustering (same idea as script 10, other automation level):
+L2 clustering (same idea as script 10, other automation level):
 
 ```bash
 .venv/bin/python scripts/11_cluster_profiling_by_level.py --level L2

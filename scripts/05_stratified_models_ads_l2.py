@@ -15,7 +15,6 @@ from xgboost import XGBClassifier
 import baseline_common as bc
 import narrative_utils as nu
 
-# Val precision should be at least this before we pick a threshold; else best F1.
 PREC_FLOOR = 0.65
 
 _MPL = bc.PROJECT_ROOT / ".mplconfig"
@@ -27,6 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+# impute, encode, and scale features; align test columns to train schema
 def build_X(train: pd.DataFrame, test: pd.DataFrame, features: list[str]):
     num_cols = [f for f in features if pd.api.types.is_numeric_dtype(train[f])]
     cat_cols = [f for f in features if f not in num_cols]
@@ -47,8 +47,8 @@ def build_X(train: pd.DataFrame, test: pd.DataFrame, features: list[str]):
     return Xtr, Xte
 
 
+# use temporal split within each automation level when current-era data is sufficient
 def split_within_level(level_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    # Train past / test current when both halves have both classes; else random stratified split.
     curr = level_df[level_df["era"] == "current"]
     arch = level_df[level_df["era"] == "archived"]
     if len(curr) >= 50 and curr["severe"].nunique() == 2 and arch["severe"].nunique() == 2:
@@ -58,8 +58,8 @@ def split_within_level(level_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     return tr.copy(), te.copy(), "stratified_random"
 
 
+# grid-search classification threshold on val set, prioritizing precision floor then F1
 def best_threshold(val_prob, y_val):
-    # Pick probability cutoff: prefer prec >= PREC_FLOOR, else best F1.
     thresholds = np.round(np.arange(0.20, 0.81, 0.02), 2)
     best = None
     for t in thresholds:
@@ -77,6 +77,7 @@ def best_threshold(val_prob, y_val):
     return best
 
 
+# evaluate model on test set at chosen threshold, return full metrics dict
 def evaluate_on_test(name, y_test, y_prob, t_star):
     yp = (y_prob >= t_star).astype(int)
     tp = int(((yp == 1) & (y_test == 1)).sum())
@@ -96,6 +97,7 @@ def evaluate_on_test(name, y_test, y_prob, t_star):
                 TP=tp, FP=fp, FN=fn, TN=tn, fn_rate=fn_rate, threshold=t_star)
 
 
+# grid-search C and threshold for LR on val set, refit on full train, evaluate on test
 def run_lr(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
            test_df: pd.DataFrame, features: list[str]) -> tuple[dict, pd.DataFrame]:
     print(f"\n{'='*70}\nLR — {level}\n{'='*70}")
@@ -105,7 +107,6 @@ def run_lr(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
     y_sub, y_val   = train_df["severe"].values, val_df["severe"].values
     y_train, y_test = train_df["severe"].values, test_df["severe"].values
 
-    # Try a few C values; threshold comes from val set
     c_grid = [0.1, 0.3, 1.0, 3.0, 10.0]
     best_global = None
     for c in c_grid:
@@ -140,6 +141,7 @@ def run_lr(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
     return result, coef_df
 
 
+# grid-search n_estimators/max_depth/min_leaf for RF, refit best, return importances
 def run_rf(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
            test_df: pd.DataFrame, features: list[str]) -> tuple[dict, pd.DataFrame]:
     print(f"\n{'='*70}\nRF — {level}\n{'='*70}")
@@ -190,6 +192,7 @@ def run_rf(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
     return result, imp_df
 
 
+# grid-search learning rate/depth/class weight for XGB, refit best, return importances
 def run_xgb(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
             test_df: pd.DataFrame, features: list[str]) -> tuple[dict, pd.DataFrame]:
     print(f"\n{'='*70}\nXGBoost — {level}\n{'='*70}")
@@ -200,7 +203,6 @@ def run_xgb(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
     y_train, y_test = train_df["severe"].values, test_df["severe"].values
 
     neg = int((y_sub == 0).sum()); pos = int((y_sub == 1).sum())
-    # Try a few scale_pos_weight values for class balance
     spw_grid       = [1.0, (neg / max(pos, 1)) / 2, neg / max(pos, 1)]
     lr_grid        = [0.05, 0.1, 0.2]
     max_depth_grid = [3, 5, 7]
@@ -242,6 +244,7 @@ def run_xgb(level: str, train_df: pd.DataFrame, val_df: pd.DataFrame,
     return result, imp_df
 
 
+# plot precision/recall/F1 bars for all algorithm-level combinations in one figure
 def make_comparison_figure(results: pd.DataFrame) -> None:
     fig_dir = bc.PROJECT_ROOT / "Presentation" / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -294,9 +297,11 @@ def main() -> None:
     print("ADS and L2: LR, RF, XGB")
     print("=" * 70)
 
+    # load severity-known data and attach narrative flags
     df_known = bc.load_known()
     df_known = nu.attach_narrative_flags(df_known)
 
+    # define feature sets per level: ADS gets narrative flags, L2 tabular only
     tab_feats = [f for f in bc.context_features(df_known) if f != "automation_level"]
     ads_feats = tab_feats + nu.NAV_FEATURES
     l2_feats  = tab_feats
@@ -304,6 +309,7 @@ def main() -> None:
     results = []
     coef_dfs = {}
 
+    # train LR, RF, and XGB for each automation level, collect metrics and coefficients
     for level, feats in [("ADS", ads_feats), ("L2", l2_feats)]:
         level_df = df_known[df_known["automation_level"] == level].copy()
         train_df, test_df, split_type = split_within_level(level_df)
@@ -329,6 +335,7 @@ def main() -> None:
         results.append(xgb_res)
         coef_dfs[f"xgb_{level.lower()}"] = xgb_imp
 
+    # print summary table and save all stratified results to CSV
     out_df = pd.DataFrame(results)
 
     print("\n" + "=" * 70)
@@ -340,7 +347,7 @@ def main() -> None:
     out_csv = bc.LR_DIR / "all_stratified_results.csv"
     out_df.to_csv(out_csv, index=False)
 
-    # Small table for slides: RF-ADS and LR-L2 rows only
+    # save best-per-level models and all coefficient/importance CSV files
     best_ads = out_df[(out_df["automation_level"] == "ADS") &
                       (out_df["algorithm"] == "RF")].copy()
     best_l2  = out_df[(out_df["automation_level"] == "L2") &

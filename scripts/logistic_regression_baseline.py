@@ -13,6 +13,7 @@ def run_logistic(train_df, test_df, df_known) -> tuple[list[dict], pd.DataFrame,
     print("Logistic regression (balanced class weights)")
     print("=" * 70)
 
+    # select features, build and scale train/test matrices
     feats = bc.context_features(df_known)
     print(f"\n   Using {len(feats)} context features.")
 
@@ -24,6 +25,7 @@ def run_logistic(train_df, test_df, df_known) -> tuple[list[dict], pd.DataFrame,
     y_train = train_df["severe"].values
     y_test = test_df["severe"].values
 
+    # fit balanced logistic regression and generate test-set predictions
     lr = LogisticRegression(
         C=1.0,
         class_weight="balanced",
@@ -35,9 +37,11 @@ def run_logistic(train_df, test_df, df_known) -> tuple[list[dict], pd.DataFrame,
     y_pred = lr.predict(X_test)
     y_prob = lr.predict_proba(X_test)[:, 1]
 
+    # evaluate pooled model and collect metrics
     results: list[dict] = []
     results.append(bc.evaluate("Logistic Regression", y_test, y_pred, y_prob))
 
+    # build sorted coefficient and odds ratio table
     coef_df = pd.DataFrame({
         "feature": train_cols,
         "coefficient": lr.coef_[0],
@@ -51,6 +55,7 @@ def run_logistic(train_df, test_df, df_known) -> tuple[list[dict], pd.DataFrame,
     print("Automation-level performance on test set (ADS vs L2)")
     print("=" * 70)
 
+    # evaluate separately on ADS vs L2 slices of the test set
     test_aug = test_df.copy()
     test_aug["y_pred_lr"] = y_pred
     test_aug["y_prob_lr"] = y_prob
@@ -72,6 +77,7 @@ def run_logistic(train_df, test_df, df_known) -> tuple[list[dict], pd.DataFrame,
     print("False-negative analysis — missed severe crashes")
     print("=" * 70)
 
+    # pull false negatives and profile by roadway type, crash partner, and automation level
     fn_mask = (y_pred == 0) & (y_test == 1)
     fn_df = test_aug[fn_mask].copy()
     print(f"   Total missed severe crashes (FN): {fn_mask.sum()}")

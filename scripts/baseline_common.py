@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings("ignore")
 
+# set up project paths and create output directories
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = PROJECT_ROOT / "Cleaned" / "sgo_cleaned_incidents.csv"
 OUT_DIR         = PROJECT_ROOT / "Modeling"
@@ -24,6 +25,7 @@ CLUSTERING_DIR  = OUT_DIR / "clustering"
 for _d in (OUT_DIR, LR_DIR, RF_DIR, XGB_DIR, BASELINE_DIR, CLUSTERING_DIR):
     _d.mkdir(exist_ok=True)
 
+# shared context feature set used across all models
 CONTEXT_FEATURES_BASE = [
     "Automation System Engaged?",
     "automation_level",
@@ -45,14 +47,14 @@ CONTEXT_FEATURES_BASE = [
 ]
 
 
+# load only rows where severity label is known
 def load_known() -> pd.DataFrame:
-    # Rows where we could define severe vs not
     df = pd.read_csv(DATA_PATH, low_memory=False)
     return df[df["severity_known"] == 1].copy()
 
 
+# split by era (temporal) when possible, else fall back to stratified random 80/20
 def split_train_test(df_known: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    # Prefer train=archived, test=current. Else random 80/20 stratified by severe and level.
     current_known = df_known[df_known["era"] == "current"]
     archived_known = df_known[df_known["era"] == "archived"]
     temporal_ok = (
@@ -68,16 +70,17 @@ def split_train_test(df_known: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     )
 
 
+# filter the base feature list to columns actually present in the dataframe
 def context_features(df_known: pd.DataFrame) -> list[str]:
     return [f for f in CONTEXT_FEATURES_BASE if f in df_known.columns]
 
 
+# impute, one-hot encode, and align feature matrix; optionally reindex to training columns
 def prepare_X(
     df_in: pd.DataFrame,
     feature_cols: list[str],
     fit_encoder: list[str] | None = None,
 ):
-    # Dummies for categories; numeric stays as-is before scaling elsewhere
     X = df_in[feature_cols].copy()
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -89,12 +92,12 @@ def prepare_X(
     return X, num_cols, list(X.columns)
 
 
+# standardize numeric features for logistic regression, fitting on train only
 def scale_for_lr(
     X_train_raw: pd.DataFrame,
     X_test_raw: pd.DataFrame,
     num_cols: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    # Scale numbers only (for LR)
     scaler = StandardScaler()
     X_train = X_train_raw.copy()
     X_test = X_test_raw.copy()
@@ -104,6 +107,7 @@ def scale_for_lr(
     return X_train, X_test
 
 
+# compute and print precision, recall, F1, AUC, and false-negative rate
 def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     tn, fp, fn, tp = cm.ravel()
@@ -137,6 +141,7 @@ def evaluate(name: str, y_true, y_pred, y_prob=None) -> dict:
     }
 
 
+# verbose wrapper — loads data, prints class distribution, returns train/test splits
 def load_and_split_verbose() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     print("=" * 70)
     print("1. Loading cleaned data")
@@ -156,6 +161,7 @@ def load_and_split_verbose() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     return df_known, train_df, test_df
 
 
+# explain which split strategy was used and print train/test counts and severe rates
 def print_split_banner(train_df: pd.DataFrame, test_df: pd.DataFrame, df_known: pd.DataFrame) -> None:
     current_known = df_known[df_known["era"] == "current"]
     archived_known = df_known[df_known["era"] == "archived"]

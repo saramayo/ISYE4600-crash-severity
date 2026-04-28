@@ -8,9 +8,11 @@ from logistic_regression_baseline import run_logistic
 
 
 def main() -> None:
+    # load data and run logistic regression baseline
     df_known, train_df, test_df = bc.load_and_split_verbose()
     lr_rows, coef_df, fn_df = run_logistic(train_df, test_df, df_known)
 
+    # save results, coefficients, and false negatives to CSV
     pd.DataFrame(lr_rows).to_csv(bc.BASELINE_DIR / "baseline_results.csv", index=False)
     coef_df.to_csv(bc.LR_DIR / "lr_coefficients.csv", index=False)
     fn_df.to_csv(bc.LR_DIR / "false_negatives.csv", index=False)
