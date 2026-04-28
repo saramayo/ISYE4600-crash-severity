@@ -1,29 +1,34 @@
 # Predicting Crash Severity in NHTSA SGO Reports
 
 **ISYE 4600 — Spring 2026**
+
 Santiago Aramayo, Lauren McDonald, Luis Velez
 April 27, 2026
+
 
 ---
 
 ## 1. Problem statement and goal
 
-Companies that test self driving cars in the United States are reuqired to send a crash report to NHTSA under the Standing General Order (SGO). These reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and vehicles that use a Level 2 driver assist (L2, like Tesla Autopilot). We used this public data set, however each report was hand written and used different formats that varied according to the company and the year it was published.
+Companies that test self driving cars in the United States are required to send a crash report to NHTSA under the Standing General Order (SGO). These reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and also vehicles that use a Level 2 driver assist (Tesla Autopilot). We used this public data set, however each report was hand written and used different formats that varied according to the company and the year it was published.
 
 Some of the information and features that were included in each incident report are:
 
-- Identifiers and timing: report id, report version, same incident id, report month and year.
+- report id, report version, same incident id, report month and year.
+
 - Vehicle context: automation level (ADS or L2), if the system was engaged at the time, manufacturer, model and model year of the subject vehicle, and a VIN flag.
 
-- Roadway context: roadway type (street, highway / freeway, intersection, parking lot, etc), work zone flag, traffic incident flag.
+- Roadway context: roadway type (street, highway / freeway, intersection, parking lot), work zone flag, traffic incident flag.
+
 - Weather flags: clear, cloudy, rain, snow, fog or smoke or haze, severe wind.
+
 - Crash dynamics: crash partner ("Crash With", for example passenger car, SUV, heavy truck, animal, fixed object, pedestrian or cyclist), pre crash movement of the subject vehicle and of the counterpart vehicle, and a reported pre crash speed in miles per hour.
 
 - Severity components used to build the label: highest reported injury level, airbag deployment, vehicle towed.
 
 - Free text narrative: a short description that is written by the reporting company. From this we extract 21 binary scenario flags (for example, AV stopped, AV moving, AV in parking lot, other vehicle approached from behind, intersection, vulnerable road user). 
 
-A safety analyst who reads these reports will need to define which incidents to focus on in order to maximize the safety improvement. To allow this proper focus, we propose a simple question to : which incidents are likely to be **severe**? Incidents that are likely to be severe will allow these analysts to spend the most time in analyzing situations that lead to severe outcomes.
+A safety analyst who reads these reports will need to define which incidents to focus on in order to maximize the safety improvement. To allow this proper focus, we propose a simple question to : which incidents are likely to be severe? Incidents that are likely to be severe will allow these analysts to spend the most time in analyzing situations that lead to severe outcomes.
 
 In our project we consider that a crash is severe if at least one of these things is true:
 
@@ -31,42 +36,48 @@ In our project we consider that a crash is severe if at least one of these thing
 - the airbag was deployed for the subject vehicle, or
 - some vehicle was  towed.
 
-This was the rule that was used in the SGO public summary. Our project aims to build a model that, given the incident with  structured fields and the short narrative the company writes- which is unstructured, returns a probability that the incident is severe. Our aim is not to replace the human review, but instead to flag the most likely severe cases on top so the analyst spends time where it matters the most.
+This was the rule that was used in the SGO public summary. Our project aims to build a model that, given the incident with  structured fields and the short narrative the company writes- which is unstructured, and then we return the probability that the incident is severe. Our aim is not to replace the human review, but instead to flag the most likely severe cases on top so the analyst spends time where it matters the most.
 
-
-Since the dataset we used is relatively small (around 5,500 incidents after cleaning) and the reports change over time, so the project is also a test of what is possible with this amount of public data. 
 
 ---
 
-## 2. Data
+## 2. Data Sources, Features and Cleaning
 
-**Source.** Four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. These  cover a timeframe from mid-2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a natural temporal split that will be used.
+Sources - We have four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. These  cover a timeframe from mid-2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a temporal split that we will use. 
 
-**Unit of analysis.** One row per **unique incident**. The raw files contain one row per *report version*, and a single crash can have many versions and even many vehicles (subject + counterpart). We used the script:  `01_clean_incidents.py` in order to keep the latest version for each report id, we then group by `Same Incident ID` so the model sees one example for each real-world crash.
 
-**Severity Target.** We use binary label `severe` which is defined by the OR rule above. To avoid directly representing the outcome, we keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
+- Incident Reports
+These include one row per each unique incident. The raw files contain one row per report version, and a single crash can have many versions and even many vehicles. We used the script:  `01_clean_incidents.py` in order to keep the latest version for each report id, we then group by `Same Incident ID` so the model sees one example for each real-world crash.
 
-The schematic below is a quick visual of the same OR rule.
+ We use a binary label `severe` which is defined by the OR rule above. To avoid directly representing the outcome, we keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
+
+The visual below gives us the OR rule we used.
 
 ![Severity label rule. If at least one of injury moderate or worse, airbag deployed, or vehicle towed is true, the incident is labeled severe.](Presentation/figures/02_severity_label_rule_schematic.png)
 
-**Features.** 
+Features: 
 
-We divide these into two groups, what we get directly from the tabular fields in the incidents reports, and what we extract from the free text narrative.
+We divided these into two groups, what we get directly from the tabular fields in the incidents reports, and what we extract from the free text narrative.
 
-1. *Structured (tabular)* These structured fields are pulled directly from the report: roadway type, weather flags, crash partner, pre crash movement of subject and counterpart vehicles, speed, automation engagement, month, etc. 
+1. Structured (tabular):  These structured fields are pulled directly from the report, these include: roadway type, weather flags, crash partner, pre crash movement of subject and counterpart vehicles, speed, automation engagement, month...
 
-2. *Narrative flags* These, like mentioned above are extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario , like `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We have purposefully excluded words like  like "injured", "towed", or "airbag" as features, since those words define the label rule above, os adding these would be a label leakage and would defeat the purpose on this additional training and learning.
 
-**Preprocessing.** The numeric columns are filled with the median, and the categorical columns are filled with the string `"Unknown"`. For each column that has missing values we add an `is_missing` binary indicator before imputation. The categorical columns are then one hot encoded for the linear models.
+2. Narrative flags: These, like mentioned above are extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario , some of these are `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We have purposefully excluded words like  like "injured", "towed", or "airbag" as features, since those words define the label rule above, then adding these would be a label leakage and would defeat the purpose on this additional training and learning.
 
-**Train / test split.** A *temporal* split: train on the archived era, test on the current era. This is harder than a random split (the severe rate changes between eras, see Section 3), but it is the only fair way to imitate deployment. For the stratified models (Section 4) we also reserve 25% of the training data as a validation set for hyperparameter and threshold tuning.
+Preprocessing. The numeric columns are filled with the median, and we filled the categorical columns  with the string `"Unknown"`. For each column that has missing values we also added  an `is_missing` binary indicator. The categorical columns are then one hot encoded for the linear models.
 
-The figure below shows the split visually, with row counts on the left and severe rate on the right. The L2 severe rate stays close to its ceiling between the two eras while the ADS severe rate jumps from 26% to 47%, which is the shift the pooled baseline in Section 3 fails to handle.
+Training and testing approach.
+
+Our approach was to train on the archived era, and then test on the current era. This is harder than a random split (the severe rate changes between eras, see Section 3), but it is the only fair way to imitate deployment. For the stratified models, which are just the models separated by Automation level we also then reserved a 25% of the training data as a validation set for  threshold tuning.
+
+The figure below shows this split, it includes row counts and severe rate on the right. 
+In the case of the L2 severe rate it stays close to its ceiling,  while the ADS severe rate jumps from 26% to 47%, this is the shift the pooled baseline in Section 3 was not able to handle. 
 
 ![Temporal train and test split, row counts and severe rate by era and automation level.](Presentation/figures/03_temporal_train_test_split.png)
 
-**Limitations and biases.** SGO reporting is not a population census. Companies report what their internal systems flag, the form changed across eras, and the narrative section is sometimes redacted. ADS test fleets are also concentrated in a few US cities (San Francisco, Phoenix, Austin), so the data does not represent the full driving environment. We discuss this again in Section 7.
+One of the limitations that we faced was reagrding the fact that SGO reporting is not standardized. What we mean by this is that companies report what their internal systems flag, and the way that they do this, therefore  changed across different years, and the narrative section is sometimes redacted.
+
+ We can also see that the ADS test incidents are also concentrated in some US cities (San Francisco, Phoenix, Austin), this adds bias, since the data does not represent the full driving environment. 
 
 | Era | ADS rows | L2 rows | ADS severe rate | L2 severe rate |
 |---|---|---|---|---|
@@ -75,15 +86,17 @@ The figure below shows the split visually, with row counts on the left and sever
 
 Table 1. Counts and severe rates by era and automation level (after cleaning).
 
-The figure below shows the same picture in a different way. The left panel is the severe vs non severe count on all labeled rows. The right panel shows, among severe incidents, what share fires each component of the OR rule. The "vehicle towed" signal is the most common one, the "moderate or worse injury" signal is the least common.
+The figure below explains this. 
+
+The left panel is the severe vs non severe count on all labeled rows and the right panel shows, what share fires each component of the OR rule regarding those severe incidents. We can also see that the "vehicle towed" flag is the most common one, while the "moderate or worse injury"  is the least common.
 
 ![Severity label distribution and the share of each OR component among severe rows.](Presentation/figures/01_severity_outcome_and_label_components.png)
 
 ---
 
-## 3.Our first iteration, and why it was not succesful. 
+## 3. Failed Pooled Baseline Approach 
 
-Our first attempt was to train **one logistic regression** on the combination of the ADS and L2 with a temporal split, balanced class weights, and `automation_level` as a feature. 
+Our first attempt was to train one logistic regression on the combination of the ADS and L2 with a temporal split, balanced class weights, and also `automation_level` as a feature. 
 
 This is what our script : `02_run_baselines.py` does.
 
@@ -97,40 +110,43 @@ The pooled metrics on the test set look fine : (`baseline_results.csv`):
 
 Table 2. Pooled logistic baseline (current era test set).
 
-The pooled F1 of 0.835 hides the real story. When we slice the same predictions by automation level, the model gets **every** severe ADS crash wrong. AUC on ADS is 0.51, basically random. Figure 1 (`Presentation/figures/06_confusion_matrices.png`) shows the same thing visually.
+The pooled F1 of 0.835 does not explain the error. When we then separated the same predictions by automation level we can see that the model gets  every severe ADS crash wrong. The area under curve on ADS is 0.51, this is basically random.
+
+Figure 1 (`Presentation/figures/06_confusion_matrices.png`) shows this. 
 
 ![Pooled logistic regression confusion matrix on the current era test set.](Presentation/figures/06_confusion_matrices.png)
 
-**Why it fails.** Two reasons together:
+Failure Explanation:
+In the archived years, only 26% of ADS the crashes are severe.
+ In the current year, 47% are. The training set is teaching the model that "ADS more often means not severe." When then the test era comes with a higher severe rate, then this logic fails.
 
-1. **Distribution shift.** In the archived era, only 26% of ADS crashes are severe. In the current era, 47% are. The training set teaches the model "ADS usually means not severe." When the test era arrives with a higher severe rate, that shortcut breaks.
-2. **Class proxy.** The pooled model picks up the variable `automation_level` as a strong proxy for severity (because L2 is almost always severe in the training set). It learns a quick rule like "L2 yes, ADS no", which works on average but is useless for the case we actually care about, the ADS reports.
+The pooled model also picks up the variable `automation_level` as a proxy for severity (since L2 is almost always severe in the training set). It then is able to learn a quick rule  "L2 yes, ADS no", this isually works but is useless for the ADS reports.
 
-Figure `Presentation/figures/04_reporting_bias_severe_rate_by_stratum.png` shows the strong gap in severe rate between L2 and ADS, which is exactly what the pooled model picks up on.
+Figure `Presentation/figures/04_reporting_bias_severe_rate_by_stratum.png` shows the  gap in severity rate between L2 and ADS, this is what the pooled model picks up on.
 
 ![Severe rate by era and automation level. ADS goes from 26% in archived to 47% in current; L2 stays close to 98% in both eras.](Presentation/figures/04_reporting_bias_severe_rate_by_stratum.png)
 
-This is the failure mode we wanted to fix.
+This is the failure that we aimed to fix using the startisfied model. 
 
 ---
 
 ## 4. Methods
 
-After the failure of the pooled baseline we made two changes and evaluated three model families.
+Because of the unsuccesful approach of the pooled baseline we made two changes and evaluated the models distinctly by families.
 
-**Change 1. Stratify by automation level.** We train a separate model on each level (ADS and L2). The level no longer is a feature, it is the partition. This removes the shortcut described above and forces each model to learn the actual signal in the report fields.
+We seaparated by automation level-  We train a separate model on each level (ADS and L2). This meant that automation level was no longer  a feature and instead the separation. This helped us remove the shortcut that the model was learning  and actually forced each model to learn the real signal in the report fields.
 
-**Change 2. Add narrative scenario flags to ADS.** Tabular fields alone give an AUC near 0.50 on ADS (random). Adding the 21 binary scenario flags from `narrative_utils.py` gives a clear lift, and the flags are interpretable (for example `nav_av_stopped`, `nav_other_struck_av`). For L2, almost all crashes are severe and the tabular fields alone separate the few non severe cases well, so we keep L2 tabular.
+Additionally, we also added narrative scenario flags to ADS. Since tabular fields gave us an AUC close to 0.50 on ADS (random). We added the 21 binary scenario flags from `narrative_utils.py` which gave us a solid improvement, and the flags are actually interpretable ( `nav_av_stopped`, `nav_other_struck_av`). In the case of L2, almost all crashes that are severe and the tabular fields alone separate the few non severe cases well, because of this, we decided to  keep L2 tabular.
 
-**Models.** For each automation level we train three models with `05_stratified_models_ads_l2.py`:
+For each automation level we later trained three models with `05_stratified_models_ads_l2.py`:
 
-- *Logistic regression* (LR), balanced class weights. C grid `{0.1, 0.3, 1, 3, 10}`.
-- *Random forest* (RF), balanced class weights. Grid over `n_estimators in {100, 200, 300}`, `max_depth in {None, 5, 10}`, `min_samples_leaf in {1, 5, 10}`.
-- *XGBoost*, with `scale_pos_weight` chosen from `{1, half class ratio, full class ratio}`, `learning_rate in {0.05, 0.1, 0.2}`, `max_depth in {3, 5, 7}`, 200 trees.
+- Logistic regression (LR), balanced class weights. C grid `{0.1, 0.3, 1, 3, 10}`.
+- Random forest (RF), balanced class weights. Grid over `n_estimators in {100, 200, 300}`, `max_depth in {None, 5, 10}`, `min_samples_leaf in {1, 5, 10}`.
+- XGBoost, with `scale_pos_weight` chosen from `{1, half class ratio, full class ratio}`, `learning_rate in {0.05, 0.1, 0.2}`, `max_depth in {3, 5, 7}`, 200 trees.
 
-For every fit we tune the **probability threshold** on the validation slice. We pick the threshold with the highest F1 among the ones with validation precision at least 0.65 (`PREC_FLOOR`). If no threshold meets the floor the script falls back to the threshold with the best F1 alone.
+For every one of these we tuned the probability threshold on the validation slice. We went with the threshold with the highest F1 among those  with a validation precision of at least 0.65 (`PREC_FLOOR`). If none of the threshold met the floor then the script resorted to a fallback to the threshold with the best F1.
 
-**Reproducibility.** All splits and models use `random_state=42`. We fixed all hyperparameter grids in code, no manual tweaks per run.
+It is important to mention that all splits and models use `random_state=42` - we fixed all hyperparameter grids. 
 
 ---
 
