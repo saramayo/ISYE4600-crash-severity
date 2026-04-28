@@ -331,16 +331,27 @@ To further expand and improve the model some next steps include:
 
 ---
 
-## 8. Reproducing Results
+## 8. Reproducing the results
 
-For reproducibality, all analyses were run using Python 3 with the required dependencies listed in ⁠ requirements.txt ⁠. For macOS users, OpenMP should be installed first using:
+Software: Python 3, dependencies in ⁠ requirements.txt ⁠. On macOS install OpenMP first (⁠ brew install libomp ⁠) so XGBoost runs.
 
-⁠ bash
-brew install libomp
- ⁠
-This ensures that XGBoost can run correctly.
+### Required source files
 
-To get the results reported in Tables 2 and 3, run:
+Place the four raw CSVs in a ⁠ Data folder at the project root before running anything. The cleaning script expects these exact filenames and encodings:
+
+| File | Automation level | Era | Encoding |
+|---|---|---|---|
+| ⁠ SGO-ADS_June_25_Jan_15Incident_Reports_ADS.csv ⁠ | ADS | current | UTF-8 |
+| ⁠ SGO-June_25_Jan_15_ADS_lev_2_Incident_Reports_ADAS.csv ⁠ | L2 | current | UTF-8 |
+| ⁠ SGO-Prev_Incident_Reports_ADS.csv ⁠ | ADS | archived | UTF-8 |
+| ⁠ SGO-_level_2_ADS_PrevIncident_Reports_ADAS.csv ⁠ | L2 | archived | Latin-1 |
+
+The ⁠ automation_level ⁠ ("ADS" or "L2") and ⁠ era ⁠ ("current" or "archived") columns are added by the cleaning script based on which file a row came from; they must not be present in the raw files.
+
+
+
+
+###  Run order
 
 
 python scripts/01_clean_incidents.py
@@ -348,14 +359,14 @@ python scripts/02_run_baselines.py
 python scripts/05_stratified_models_ads_l2.py
 
 
-To reproduce the remaining analyses, including Tables 4–6 and the figures that were referenced, run:
+Tables 4 to 6 and the figures referenced above:
 
 
 python scripts/06_narrative_features.py
 python scripts/09_stratified_fn_analysis.py
 python scripts/10_cluster_profiling.py
-python scripts/11_cluster_profiling_by_level.py -- level L2
+python scripts/11_cluster_profiling_by_level.py
 python scripts/make_presentation_figures.py
 
 
-All random seeds were fixed at 42 to support reproducibility. The README contains the full output map for the generated tables, figures, and model results.
+All seeds are fixed at 42 and the README contains detailed instructions.
