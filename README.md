@@ -4,7 +4,6 @@ Santiago Aramayo, Lauren McDonald, Luis Velez
 
 ---
 
-## Reproducibility (what a grader needs)
 
 Inputs are the four CSVs under **`Data/`** (bundled with the submission). All paths below are relative to the repository root.
 
