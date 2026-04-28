@@ -10,25 +10,13 @@ April 27, 2026
 
 ## 1. Problem statement and goal
 
-Companies that test self driving cars in the United States are required to send a crash report to NHTSA under the Standing General Order (SGO). These reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and also vehicles that use a Level 2 driver assist (Tesla Autopilot). We used this public data set, however each report was hand written and used different formats that varied according to the company and the year it was published.
+Companies that test self driving cars in the United States are required to send a crash report to NHTSA under the Standing General Order (SGO). These reports include vehicles that use a full driving system (ADS, like Waymo or Cruise) and also vehicles that use a Level 2 driver assist (Tesla Autopilot).
 
-Some of the information and features that were included in each incident report are:
 
-- report id, report version, same incident id, report month and year.
+We used this public dataset, however the reports are not completely standardized, as each report is written by the reporting company, and the format, wording, level of detail, and missing information varies across companies and years.
 
-- Vehicle context: automation level (ADS or L2), if the system was engaged at the time, manufacturer, model and model year of the subject vehicle, and a VIN flag.
 
-- Roadway context: roadway type (street, highway / freeway, intersection, parking lot), work zone flag, traffic incident flag.
-
-- Weather flags: clear, cloudy, rain, snow, fog or smoke or haze, severe wind.
-
-- Crash dynamics: crash partner ("Crash With", for example passenger car, SUV, heavy truck, animal, fixed object, pedestrian or cyclist), pre crash movement of the subject vehicle and of the counterpart vehicle, and a reported pre crash speed in miles per hour.
-
-- Severity components used to build the label: highest reported injury level, airbag deployment, vehicle towed.
-
-- Free text narrative: a short description that is written by the reporting company. From this we extract 21 binary scenario flags (for example, AV stopped, AV moving, AV in parking lot, other vehicle approached from behind, intersection, vulnerable road user). 
-
-A safety analyst who reads these reports will need to define which incidents to focus on in order to maximize the safety improvement. To allow this proper focus, we propose a simple question to : which incidents are likely to be severe? Incidents that are likely to be severe will allow these analysts to spend the most time in analyzing situations that lead to severe outcomes.
+A safety analyst who reads these reports will need to define which incidents to focus on in order to maximize the safety improvement. Our project focuses on one simple but valuable question,  which incidents are likely to be severe? Incidents that are likely to be severe will allow  analysts to spend the most time in analyzing situations that lead to severe outcomes.
 
 In our project we consider that a crash is severe if at least one of these things is true:
 
@@ -36,20 +24,19 @@ In our project we consider that a crash is severe if at least one of these thing
 - the airbag was deployed for the subject vehicle, or
 - some vehicle was  towed.
 
-This was the rule that was used in the SGO public summary. Our project aims to build a model that, given the incident with  structured fields and the short narrative the company writes- which is unstructured, and then we return the probability that the incident is severe. Our aim is not to replace the human review, but instead to flag the most likely severe cases on top so the analyst spends time where it matters the most.
+This was the rule that was used in the SGO public summary. Our project aims to build a model that, given the incident with  structured fields and the short narrative the company writes- which is unstructured, and then  return the probability that the incident is severe. Our aim is not to replace the human review, but instead to flag the most likely severe cases on top so the analyst spends time where it matters the most.
 
 
 ---
 
 ## 2. Data Sources, Features and Cleaning
 
-Sources - We have four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. These  cover a timeframe from mid-2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a temporal split that we will use. 
+Sources - We have four CSV files from the NHTSA SGO portal: ADS current era, ADS archived era, L2 current era, L2 archived era. These  cover a timeframe from mid 2021 to early 2025. We treat the "archived" era as past reports and the "current" era as more recent reports, which gives us a good temporal split that we used for training and testing. 
 
 
-- Incident Reports
-These include one row per each unique incident. The raw files contain one row per report version, and a single crash can have many versions and even many vehicles. We used the script:  `01_clean_incidents.py` in order to keep the latest version for each report id, we then group by `Same Incident ID` so the model sees one example for each real-world crash.
+As far as the incident reports, each include one row per unique incident. The raw files contain one row per report version, and a single crash can have many versions and even many vehicles. We used the script:  `01_clean_incidents.py` in order to keep the latest version for each report id, we then group by `Same Incident ID` so the model sees one example for each real-world crash.
 
- We use a binary label `severe` which is defined by the OR rule above. To avoid directly representing the outcome, we keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
+ We use a binary label `severe` which is defined by the OR rule we had mentioned above. To avoid directly representing the outcome, we also keep a flag `severity_known` and only train and test on rows where at least one of these components is observed. Out of the 5,576 unique incidents, 5,567 have at least one severity signal, of these 4,063 are severe and 1,504 are not considered severe.
 
 The visual below gives us the OR rule we used.
 
@@ -62,11 +49,11 @@ We divided these into two groups, what we get directly from the tabular fields i
 1. Structured (tabular):  These structured fields are pulled directly from the report, these include: roadway type, weather flags, crash partner, pre crash movement of subject and counterpart vehicles, speed, automation engagement, month...
 
 
-2. Narrative flags: These, like mentioned above are extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario , some of these are `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We have purposefully excluded words like  like "injured", "towed", or "airbag" as features, since those words define the label rule above, then adding these would be a label leakage and would defeat the purpose on this additional training and learning.
+2. Narrative flags: These are extracted from the free text by `narrative_utils.py`. We use 21 binary flags that describe the scenario , some of these are `nav_av_stopped`, `nav_other_struck_av`, `nav_at_intersection`, `nav_in_parking_lot`. We have purposefully excluded words like  like "injured", "towed", or "airbag" as features, since those words define the label rule above, then adding these would be a label leakage and would defeat the purpose on this additional training and learning.
 
-Preprocessing. The numeric columns are filled with the median, and we filled the categorical columns  with the string `"Unknown"`. For each column that has missing values we also added  an `is_missing` binary indicator. The categorical columns are then one hot encoded for the linear models.
+For additional preprocessing, the numeric columns are filled with the median, and we filled the categorical columns  with the string `"Unknown"`. For each column that has missing values we also added  an `is_missing` binary indicator. The categorical columns are then one hot encoded for the linear models.
 
-Training and testing approach.
+Training and testing approach:
 
 Our approach was to train on the archived era, and then test on the current era. This is harder than a random split (the severe rate changes between eras, see Section 3), but it is the only fair way to imitate deployment. For the stratified models, which are just the models separated by Automation level we also then reserved a 25% of the training data as a validation set for  threshold tuning.
 
@@ -75,7 +62,7 @@ In the case of the L2 severe rate it stays close to its ceiling,  while the ADS 
 
 ![Temporal train and test split, row counts and severe rate by era and automation level.](Presentation/figures/03_temporal_train_test_split.png)
 
-One of the limitations that we faced was reagrding the fact that SGO reporting is not standardized. What we mean by this is that companies report what their internal systems flag, and the way that they do this, therefore  changed across different years, and the narrative section is sometimes redacted.
+One of the limitations that we faced was regarding the fact that SGO reporting is not standardized. What we mean by this is that companies report what their internal systems flag, and the way that they do this, therefore  changed across different years, and the narrative section is sometimes redacted.
 
  We can also see that the ADS test incidents are also concentrated in some US cities (San Francisco, Phoenix, Austin), this adds bias, since the data does not represent the full driving environment. 
 
@@ -94,13 +81,13 @@ The left panel is the severe vs non severe count on all labeled rows and the rig
 
 ---
 
-## 3. Failed Pooled Baseline Approach 
+## 3. Initial Pooled Baseline Approach 
 
 Our first attempt was to train one logistic regression on the combination of the ADS and L2 with a temporal split, balanced class weights, and also `automation_level` as a feature. 
 
 This is what our script : `02_run_baselines.py` does.
 
-The pooled metrics on the test set look fine : (`baseline_results.csv`):
+The pooled metrics on the test set look fine, however through the deeper evaluation we found some key failures (`baseline_results.csv`):
 
 | Slice | Precision | Recall | F1 | AUC | FN rate |
 |---|---|---|---|---|---|
@@ -117,6 +104,7 @@ Figure 1 (`Presentation/figures/06_confusion_matrices.png`) shows this.
 ![Pooled logistic regression confusion matrix on the current era test set.](Presentation/figures/06_confusion_matrices.png)
 
 Failure Explanation:
+
 In the archived years, only 26% of ADS the crashes are severe.
  In the current year, 47% are. The training set is teaching the model that "ADS more often means not severe." When then the test era comes with a higher severe rate, then this logic fails.
 
@@ -152,23 +140,20 @@ It is important to mention that all splits and models use `random_state=42` - we
 
 ## 5. Evaluation
 
-We use four metrics, reported on the held out current era test set for each level. Each one captures something different that matters here:
+We are testing each model on a separate test set that represents the “current era” data. The model does not train on this data, so it shows how well the model performs on crashes it has not seen before. 
 
-- **Precision** (of the predicted severe cases, how many were actually severe). False alarms cost analyst time.
-- **Recall** (of the actually severe cases, how many we found). Missing a severe case is the worst error.
-- **F1**, the harmonic mean of the two.
-- **ROC AUC**, threshold free comparison, useful to compare the *ranking* quality of the models.
-- **False negative rate** (`FN / (FN + TP)`), the share of severe crashes we miss. We track this explicitly because it is the metric a safety team would care about most.
+The metrics used are precision, recall, F1, ROC AUC and false negative rate, allowing us to evaluate the model from a performance and safety perspective. The precision measures how many of the predicted severe crashes were actually severe. This is important because false alarms waste analysts time. Recall is a very important metric we used because it measures how many severe cases the model was actually able to find, which is the biggest concern of this project. F1 combines both the precision and recall. ROC AUC measures how well the model ranks severe crashes above non-severe crashes (for model performance) and false negative rate measures how many severe crashes missed (top priority for safety).
 
-Validation is done **inside** the train set. The test set is only used at the end. There is no model selection that looks at the test set, which keeps the comparison fair.
+The training set was only used to tune and choose models. The test set was saved until the very end. This ensures that the test results are not biased by repeatedly checking and adjusting the model based on the test data.
+
 
 ---
 
 ## 6. Results
 
-### 6.1 Stratified results (main table)
+### 6.1 Stratified results 
 
-The full result file is `Modeling/logistic_regression/all_stratified_results.csv`.
+Our full result file is `Modeling/logistic_regression/all_stratified_results.csv`.
 
 | Model | Level | Precision | Recall | F1 | AUC | FN rate | Threshold |
 |---|---|---|---|---|---|---|---|
@@ -179,27 +164,33 @@ The full result file is `Modeling/logistic_regression/all_stratified_results.csv
 | RF | L2 | 0.972 | 1.000 | 0.986 | 0.836 | 0.0% | 0.20 |
 | XGB | L2 | 0.972 | 1.000 | 0.986 | 0.850 | 0.0% | 0.20 |
 
-Table 3. Stratified LR / RF / XGB by automation level on the current era test.
+Table 3. Stratified LR / RF / XGB separated by automation level on the current era test.
 
-For ADS the ranking is clear: XGBoost wins on every metric. The big gain is from going non linear (LR to RF jumps the AUC from 0.53 to 0.89). XGBoost adds another smaller step, and most importantly cuts the false negative rate from 11.7% to 7.8%. Compared to the pooled baseline FN rate of 100% on ADS, this is a meaningful change.
+For ADS , XGBoost was clearly better on every metric. This big improvement is likely from the  non linear patterns that it is able to capture. We can see a clear jump of LR to RF in the AUC results is from 0.53 to 0.89. XGBoost is then able to add another step, and is able to cut the false negative rate from 11.7% to 7.8%. Compared to the pooled baseline FN rate of 100% on ADS, this is exactly the improvement that we were aiming for.
 
-For L2, all three models reach an F1 above 0.97 and FN rates between 0% and 3%. RF and XGB tie at the top because L2 is almost linearly separable (98% positive class). We use logistic regression for L2 in error analysis because the FN cases LR makes are the more interesting ones, RF predicts everyone severe and trivially gets 0% FN.
+For the L2 level, all three models were able to reach an F1 higher than 0.97 and got FN rates between 0% and 3%. Random Forest and XG boost are have similar results likely because L2 is almost linearly separable (98% positive class).
 
-The visual summary (Figure 2) is `Presentation/figures/13_model_comparison_all.png`.
+ We see that the logistic regression false negatives are the more interesting ones, since  RF predicts every L2 case as severe, and therefore  gets 0% FN by default. 
+
+This is summarized in Figure 2 - `Presentation/figures/13_model_comparison_all.png`.
 
 ![Stratified model comparison, all six combinations on the current era test set.](Presentation/figures/13_model_comparison_all.png)
 
 ### 6.2 Pooled baseline vs stratified ADS
 
-This is the before / after view of the failure we described in Section 3. The figure is `Presentation/figures/15_ads_pooled_vs_stratified_improvement.png`.
+The figure below gives us the before and after view of the failure earlier. 
+
+ `Presentation/figures/15_ads_pooled_vs_stratified_improvement.png`.
 
 ![Pooled LR on the ADS slice (left bars in each pair) compared with the stratified ADS model (right bars).](Presentation/figures/15_ads_pooled_vs_stratified_improvement.png)
 
-The pooled bars are zero on every metric for ADS. The stratified bars reach the numbers from Table 3. The change of split design and feature set, not just the choice of XGBoost, is what fixed the model.
+We can see that the pooled bars are zero for every metric for ADS and the stratified bars reach the numbers from Table 3. 
+The change that we created in splitting the data by automation and the addition of XGBoost is what was able to capture the improvement that we were looking for.
 
-### 6.3 Does the narrative help on ADS?
+### 6.3 Influence of the Extracted Narrative 
 
-We compared three feature sets on the ADS logistic regression: tabular only, tabular plus narrative, narrative only. AUC results (`narrative_ads_model_comparison.csv`):
+We now compare the three feature sets on the ADS logistic regression: tabular only, tabular plus narrative, narrative only. 
+The AUC results are in the csv below: (`narrative_ads_model_comparison.csv`):
 
 | Feature set | AUC |
 |---|---|
@@ -209,7 +200,9 @@ We compared three feature sets on the ADS logistic regression: tabular only, tab
 
 Table 4. ADS LR with different feature sets, current era test.
 
-The same comparison with precision, recall and F1 is in Table 4b. We include it because AUC alone hides the operating point. The narrative only setup not only has the highest AUC, it also has the highest F1 (0.599) and the highest precision (0.548), while still keeping a recall above the tabular only setup.
+We proceed with the same comparison looking at precision, recall and F1 in Table 4b.
+
+ We have included it because AUC alone is not enough to show the change. We can see that the narrative only setup has the highest AUC, and it also has the highest F1 (0.599) and the highest precision (0.548), additionally it still keeps a recall above the tabular only setup.
 
 | Feature set | Precision | Recall | F1 |
 |---|---|---|---|
@@ -217,20 +210,24 @@ The same comparison with precision, recall and F1 is in Table 4b. We include it 
 | Tabular + narrative | 0.494 | 0.615 | 0.548 |
 | Narrative only | 0.548 | 0.661 | 0.599 |
 
-Table 4b. ADS LR feature set comparison, point estimates at the chosen threshold.
+Table 4b. ADS LR feature set comparison 
 
-The interesting result is that **narrative alone beats tabular alone**. When we use the full XGBoost in Table 3 (which gets AUC 0.92 with tabular plus narrative on ADS), the lift becomes really big. So the structured form fields are not enough on their own for ADS, the short text in the report is what carries most of the signal.
+A result that we were not expecting was that the narrative alone beats tabular alone. When we use the full XGBoost in Table 3 (which gets AUC 0.92 with tabular plus narrative on ADS), the improvement became massive. This tells us that the structured form fields are therefore not enough on their own for ADS, and that the unstructured short narrative in the report carries real meaning and signal.
 
 Top narrative flags (by absolute LR coefficient on ADS, from `lr_ads_coefficients.csv`):
 
 - `nav_av_stopped`, `nav_other_struck_av`, `nav_minor_damage_lang` are associated with **lower** severe probability.
 - `nav_av_moving`, `nav_lane_change`, `nav_in_parking_lot` push the probability **up** in some clusters (see 6.5).
 
-The figure below shows the largest odds ratios of the ADS LR model. Bars to the right of the dashed line at 1.0 raise the predicted severe probability, bars to the left lower it. This is what makes logistic regression useful here: even when its raw accuracy is lower than the tree models, the coefficients are easy to read.
+The figure below is showing the largest odds ratios of the ADS LR model.
+We can see that the bars to the right of the dashed line at 1.0 were able to raise the predicted severe probability, and the bars to the left lower it. 
+This is what makes logistic regression useful, since even if raw accuracy is lower than the tree models, the coefficients are easier to read.
 
 ![Top odds ratios of the ADS logistic regression with tabular plus narrative features.](Presentation/figures/09_top_odds_ratios_lr.png)
 
-For the winning ADS XGBoost model the picture is a bit different. Tree based models do not give signed coefficients, instead we read the gain importance from `xgb_ads_importances.csv`. The top 10 features are in Table 4c. The list mostly agrees with the LR view (vulnerable users, motorcycle / cyclist crash partners, AV moving at impact), but XGBoost also leans on `Report Month` and on free form fields like `SV Pre-Crash Movement_Other, see Narrative` that the linear model cannot exploit as cleanly.
+We can see that for ADS XGBoost model the results change. The tree based did not give signed coefficients, so we read the improvement from `xgb_ads_importances.csv`. 
+
+We can see the top 10 features are in Table 4c. This list is in accordance with the LR view - these include vulnerable users, motorcycle / cyclist crash partners, AV moving at impact. However, we can also see that XGBoost also relies on `Report Month` and on free form fields like `SV Pre-Crash Movement_Other, see Narrative` , these are some of thhe fields that the linear model cannot use cleanly.
 
 | Rank | Feature | Importance |
 |---|---|---|
@@ -249,7 +246,7 @@ Table 4c. Top 10 ADS XGBoost feature importances (gain).
 
 ### 6.4 Error analysis (false negatives)
 
-The output of `09_stratified_fn_analysis.py` gives the missed severe crashes for the best model on each level. Summary (`fn_summary.csv`):
+The output of the `09_stratified_fn_analysis.py` gives us the missed severe crashes for the best model on each level. We can see a summary of this on the CSV: (`fn_summary.csv`):
 
 | Model | Severe in test | FN | FN rate | Top roadway | Top crash partner |
 |---|---|---|---|---|---|
@@ -262,20 +259,22 @@ Figure `Presentation/figures/17_fn_analysis_stratified.png` shows the top contex
 
 ![Where the stratified models miss severe cases (current era test).](Presentation/figures/17_fn_analysis_stratified.png)
 
-The two confusion matrices below give the counts behind these miss patterns. ADS XGBoost has 22 false negatives out of 283 severe cases in the test set (about 7.8%), while LR on L2 misses 25 out of 766 (about 3.3%, before threshold tuning makes the L2 RF / XGB hit zero).
+The two confusion matrices below give us the counts behind the patterns that it missed. ADS XGBoost had 22 false negatives out of 283 severe cases in the test set (about 7.8%), while LR on L2 misses 25 out of 766 , which is about 3.3%, before threshold tuning makes the L2 RF / XGB hit zero .
 
 ![Confusion matrices for the stratified models on the current era test, ADS on the left and L2 on the right.](Presentation/figures/14_stratified_confusion_matrices_ads_l2.png)
 
-What the model misses on ADS is mostly **street level crashes with a passenger vehicle**, where the AV was stopped or in slow traffic and the narrative is short. These cases look benign on paper but the airbag did fire or the vehicle was towed. On L2 the misses are concentrated on **highway / freeway** crashes that the company described under "Other, see narrative", which is exactly where the structured form gives less information.
+In ADS the model mostly misses the  street level crashes with a passenger vehicle, these are cases where the AV was stopped or in slow traffic and the narrative is therefore very short. These cases look very soft, however the airbag did fire or the vehicle was towed. 
+
+On L2 the most of the misses are  on highway / freeway crashes that the company just describes  "Other" this is where the structured data gives us less information and fails. 
 
 ### 6.5 ADS scenario clusters
 
-To support the error analysis we ran k means on the ADS rows (script `10_cluster_profiling.py`). Silhouette score selected k = 7. The summary table (`ads_cluster_summary.csv`):
+To support our analysis we ran k means on the ADS data (script ⁠ 10_cluster_profiling.py ⁠). By evaluating the silhouette score for each cluster, we conluded that k = 7 is the choice that best fits our data. Below is the summary table for the results yielded by this analysis(⁠ ads_cluster_summary.csv ⁠):
 
 | Cluster | Size | Severe rate | Scenario label |
 |---|---|---|---|
 | 2 | 56% | 26% | Typical street crash, AV stopped |
-| 5 | 21% | **48%** | AV moving at impact |
+| 5 | 21% | *48%* | AV moving at impact |
 | 0 | 14% | 33% | Other vehicle struck AV |
 | 1 | 4% | 42% | AV hit a fixed object (parking lot) |
 | 3 | 4% | 31% | AV struck other party |
@@ -284,15 +283,13 @@ To support the error analysis we ran k means on the ADS rows (script `10_cluster
 
 Table 6. ADS scenario clusters (k = 7).
 
-The biggest cluster (C2) is the typical "AV stopped, low speed bump" type. The most severe one, C5, is "AV moving at impact". These are the cases the operations team would want to see first if a model flags them. The animal cluster has zero severe cases, which is consistent with how those incidents are reported.
+The biggest cluster (C2) is the typical "AV stopped, low speed bump" type. The most severe one (C5) is "AV moving at impact". These are the cases in which the operations team would be most interested: very frequent crash scenarios and the most severe ones. The animal cluster has zero severe cases, which is consistent with how those incidents are reported. We also ran the same clustering on L2 (⁠ 11_cluster_profiling_by_level.py --level L2 ⁠) for symmetry. Almost every L2 cluster is at 95% to 100% severity rate, so using clustering models for L2 is mostly about indentifying scenario type, not about evaluating clusters that had high severity rates.
 
-We also ran the same clustering on L2 (`11_cluster_profiling_by_level.py --level L2`) for symmetry. Almost every L2 cluster is at 95% to 100% severe, so the clustering for L2 is mostly about scenario type, not about severity contrast.
-
-Before the cluster profile, the figure below shows two diagnostic views: the silhouette score across `k` from 3 to 8, and a 2D PCA projection of the ADS feature matrix colored by the cluster id. The silhouette curve is what we used to pick k = 7, and the PCA scatter gives a sense of how well separated the clusters are in feature space.
+Before the cluster profile, the figure below shows two diagnostic views: the silhouette score across ⁠ k ⁠ from 3 to 8, and a 2D PCA projection of the ADS feature matrix colored by the cluster id. The silhouette curve is what we used to pick k = 7, and the PCA scatter plot gives a sense of how well separated the clusters are in the feature space.
 
 ![ADS clustering diagnostics: silhouette score against k, and PCA scatter colored by cluster id.](Presentation/figures/10_clustering_silhouette_and_pca.png)
-
-The figure below brings together the parts of the ADS clustering that are useful to read at once. The top left panel is the silhouette score against `k` from 3 to 8, with a dashed line at the value chosen by the maximum (k = 7). The next two panels show the cluster sizes and the severe rate per cluster compared with the overall ADS average. The bottom panels show the roadway type distribution per cluster and the human readable scenario label table that we used in Table 6.
+ 
+The figure below displays interpretations of the results of applying clustering algorithms to ADS data. The top left panel is the silhouette score against ⁠ k ⁠ from 3 to 8, with a dashed line at the value chosen by the maximum (k = 7). The next two panels show the cluster sizes and the severity rate per cluster compared with the overall ADS average. The bottom panels show the roadway type distribution per cluster and the label of each cluster used in Table 6.
 
 ![ADS clustering summary: silhouette score by k, cluster sizes, severe rate per cluster, roadway type per cluster, and the scenario label table.](Modeling/clustering/kmeans_cluster_profiles_figure.png)
 
@@ -302,51 +299,63 @@ For comparison, the L2 clustering looks like the figure below. Most L2 clusters 
 
 ---
 
-## 7. Interpretation, what did not work, limitations, next steps
+## 7. Interpretation, changes in our approach, limitations and next steps
 
-**Interpretation for the system.** A small safety team can use the stratified ADS XGBoost as a triage tool. Rank new ADS reports by predicted probability, look at the top first. Cluster C5 ("AV moving at impact") is the most informative scenario to monitor. The L2 model is almost trivial because virtually every L2 SGO report is severe by our definition; L2 is more useful as a *consistency check* on the OR rule than as a learning problem.
+Interpretation of Results: 
 
-**Risks and assumptions.** The label is the OR rule, not a clinical injury rating. Reports are written by the company, which means the narrative reflects each company style. The "severity_known" filter removes around 9 incidents only, so it has no real impact on the headline numbers. The model is calibrated for the current era; if the SGO form changes again the model should be retrained.
+This means the ADS XGBoost model could help a safety team prioritize which crash reports to review first. Instead of reading every report randomly, they could rank reports by the model’s predicted probability of being severe. The reports with the highest predicted risk would be "triaged" and reviewed first by the safety analysts.
 
-**What did not work.** A few things we tried and dropped from the final pipeline:
+Another interpretation is that it also says Cluster C5, described as “AV moving at impact,” is the most important crash scenario. This is important to watch because it gives useful information about risk. For the L2 model, the model is not very useful as a machine learning problem because almost all L2 reports are already labeled severe. This means that the L2 model is primarily just useful as a check to make sure the severity labeling rule is consistent.
 
-- *Pooled training across levels.* Discussed in Section 3. It does not just give worse numbers on ADS, it gives a 100% FN rate, which is the kind of failure we have to point out.
-- *Outcome words in the narrative.* Early ablations included words like "towed" or "injured" as features, which gave very high AUC but is label leakage. We removed these.
-- *Narrative for L2.* We tested adding the 21 flags to L2. Because L2 is already 98% severe in training, the flags add nothing measurable, so we kept L2 tabular only.
-- *Pure logistic regression on ADS.* Even with the narrative flags, ADS LR stays at AUC 0.53 because the relationships are not linear. Tree based models are clearly the right family here.
 
-**Limitations.**
-- Reporting bias: SGO is not a random sample of all AV crashes.
-- Sample size for ADS is still small (around 600 test incidents).
-- The temporal split is correct but it depends on what the SGO portal looks like at submission time, the boundary between "archived" and "current" is set by NHTSA and can move.
-- Narrative redactions zero out our scenario flags, which limits what the model can learn from those rows.
+We also recognize where some of our assumptions are limited, for example the "severe" label is based on the rule we created, and is not an official score of injury or severity. So "severe" essentially means that the crash met the OR rule (injury, airbag, towing, etc). Also, the reports are written by different companies, so the language used may differ depending on who wrote it. One person might describe crashes in more detail than the other. Furthermore, the 'severity_known' filter only removed about 9 accidents, likely not changing the results drastically. 
 
-**Next steps (one or two realistic ones).**
-1. Replace the regex narrative flags with a small LLM that produces the same JSON schema. The flags would still be binary (so the model interface does not change) but would handle paraphrases the regex misses. We would need to cache the outputs for reproducibility and avoid prompts that mention injury / airbag / tow.
-2. Calibrate the threshold per cluster, not per level. Cluster C5 has a 48% severe rate, so a different operating point may catch more "AV moving at impact" cases at acceptable false alarm rate.
+
+Changes in our approach:
+
+There were a few things we tried and dropped from the final pipeline. First, pooled training across the levels meant combining ADS and L2 data into one model. This did not work well because it missed all severe ADS cases (100% false nefative rate), which is a major safety failure. Another initial problem was the outcome words in the narrative meant using words like "towed" or "injured" from the crash description caused label leakage, making the model look really good, but unfair because those words directly reveal the label. To fix this, we removed these words. Adding the 21 text-based flags to the L2 model was also problematic since almost every L2 case was already severe, meaning the extra narrative features did not improve the model. This made us pivot back to keeping L2 tabular only. Finally, another issue we ran into is that pure logistic regression on ADS meant using a simpler linear model. This model performed poorly (ADS LR stays at AUC 0.53) because the patterns in ADS crashes are likely more complex, which is why XGBoost worked significantly better. 
+
+
+Limitations:
+This study has several limitations. First, the SGO dataset is not a random sample of all autonomous vehicle crashes, so the results may not fully represent all AV crash patterns. Second, the ADS test set is still relatively small, with around 600 incidents, which limits how confidently the results can be generalized. Another limitation is that the temporal split depends on how NHTSA defines the “archived” and “current” data at the time of submission, so the boundary between eras may change over time. Another limitation that is important to point out is that some crash narratives are redacted, which prevents the model from identifying certain scenario flags and limits what it can learn from those reports.
+
+
+Next steps 
+
+To further expand and improve the model some next steps include:
+1.⁠ ⁠*Replace the regex narrative flags with a small LLM.* This could produce the same JSON outputs while also capturing paraphrased crash descriptions better than the current regex approach. .
+2.⁠ ⁠*Maintain reporducibality and avoid label leakage.* Doing this allows for LLM outputs to be caches and prompts to avoid outcome-related terms (injury, airbag, towing, etc). 
+3.⁠ ⁠*Calibrate the threshold per cluster, not per level.* Instead of using one threshold for automation level, thresholds should be adjusted by cluster so that the model can better reflect differences in crash risk.
+4.⁠ ⁠*Prioritize C5.* Since Cluster C5 has a 48% severe rate, a different threshold may catch more "AV moving at impact" cases while also keeping the false alarm rates within a reasonable range.
+
 
 ---
 
-## 8. Reproducing the results
+## 8. Reproducing Results
 
-Software: Python 3, dependencies in `requirements.txt`. On macOS install OpenMP first (`brew install libomp`) so XGBoost runs.
+For reproducibality, all analyses were run using Python 3 with the required dependencies listed in ⁠ requirements.txt ⁠. For macOS users, OpenMP should be installed first using:
 
-Minimum rerun (the numbers in Tables 2 and 3):
+⁠ bash
+brew install libomp
+ ⁠
+This ensures that XGBoost can run correctly.
 
-```
+To get the results reported in Tables 2 and 3, run:
+
+
 python scripts/01_clean_incidents.py
 python scripts/02_run_baselines.py
 python scripts/05_stratified_models_ads_l2.py
-```
 
-Rest of the analyses (Tables 4 to 6 and the figures referenced above):
 
-```
+To reproduce the remaining analyses, including Tables 4–6 and the figures that were referenced, run:
+
+
 python scripts/06_narrative_features.py
 python scripts/09_stratified_fn_analysis.py
 python scripts/10_cluster_profiling.py
-python scripts/11_cluster_profiling_by_level.py --level L2
+python scripts/11_cluster_profiling_by_level.py -- level L2
 python scripts/make_presentation_figures.py
-```
 
-All seeds are fixed at 42. The README contains the full output map.
+
+All random seeds were fixed at 42 to support reproducibility. The README contains the full output map for the generated tables, figures, and model results.
