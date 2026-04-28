@@ -62,6 +62,10 @@ We divide these into two groups, what we get directly from the tabular fields in
 
 **Train / test split.** A *temporal* split: train on the archived era, test on the current era. This is harder than a random split (the severe rate changes between eras, see Section 3), but it is the only fair way to imitate deployment. For the stratified models (Section 4) we also reserve 25% of the training data as a validation set for hyperparameter and threshold tuning.
 
+The figure below shows the split visually, with row counts on the left and severe rate on the right. The L2 severe rate stays close to its ceiling between the two eras while the ADS severe rate jumps from 26% to 47%, which is the shift the pooled baseline in Section 3 fails to handle.
+
+![Temporal train and test split, row counts and severe rate by era and automation level.](Presentation/figures/03_temporal_train_test_split.png)
+
 **Limitations and biases.** SGO reporting is not a population census. Companies report what their internal systems flag, the form changed across eras, and the narrative section is sometimes redacted. ADS test fleets are also concentrated in a few US cities (San Francisco, Phoenix, Austin), so the data does not represent the full driving environment. We discuss this again in Section 7.
 
 | Era | ADS rows | L2 rows | ADS severe rate | L2 severe rate |
@@ -189,6 +193,16 @@ We compared three feature sets on the ADS logistic regression: tabular only, tab
 
 Table 4. ADS LR with different feature sets, current era test.
 
+The same comparison with precision, recall and F1 is in Table 4b. We include it because AUC alone hides the operating point. The narrative only setup not only has the highest AUC, it also has the highest F1 (0.599) and the highest precision (0.548), while still keeping a recall above the tabular only setup.
+
+| Feature set | Precision | Recall | F1 |
+|---|---|---|---|
+| Tabular only | 0.497 | 0.686 | 0.577 |
+| Tabular + narrative | 0.494 | 0.615 | 0.548 |
+| Narrative only | 0.548 | 0.661 | 0.599 |
+
+Table 4b. ADS LR feature set comparison, point estimates at the chosen threshold.
+
 The interesting result is that **narrative alone beats tabular alone**. When we use the full XGBoost in Table 3 (which gets AUC 0.92 with tabular plus narrative on ADS), the lift becomes really big. So the structured form fields are not enough on their own for ADS, the short text in the report is what carries most of the signal.
 
 Top narrative flags (by absolute LR coefficient on ADS, from `lr_ads_coefficients.csv`):
@@ -199,6 +213,23 @@ Top narrative flags (by absolute LR coefficient on ADS, from `lr_ads_coefficient
 The figure below shows the largest odds ratios of the ADS LR model. Bars to the right of the dashed line at 1.0 raise the predicted severe probability, bars to the left lower it. This is what makes logistic regression useful here: even when its raw accuracy is lower than the tree models, the coefficients are easy to read.
 
 ![Top odds ratios of the ADS logistic regression with tabular plus narrative features.](Presentation/figures/09_top_odds_ratios_lr.png)
+
+For the winning ADS XGBoost model the picture is a bit different. Tree based models do not give signed coefficients, instead we read the gain importance from `xgb_ads_importances.csv`. The top 10 features are in Table 4c. The list mostly agrees with the LR view (vulnerable users, motorcycle / cyclist crash partners, AV moving at impact), but XGBoost also leans on `Report Month` and on free form fields like `SV Pre-Crash Movement_Other, see Narrative` that the linear model cannot exploit as cleanly.
+
+| Rank | Feature | Importance |
+|---|---|---|
+| 1 | Report Month | 0.213 |
+| 2 | nav_vulnerable_user | 0.075 |
+| 3 | Crash With_Non Motorist: Cyclist | 0.069 |
+| 4 | Crash With_Motorcycle | 0.045 |
+| 5 | Crash With_Non Motorist: Other | 0.036 |
+| 6 | nav_av_moving | 0.024 |
+| 7 | SV Pre Crash Movement_Other, see Narrative | 0.023 |
+| 8 | CP Pre Crash Movement_Proceeding Straight | 0.017 |
+| 9 | nav_minor_damage_lang | 0.016 |
+| 10 | nav_av_turning | 0.016 |
+
+Table 4c. Top 10 ADS XGBoost feature importances (gain).
 
 ### 6.4 Error analysis (false negatives)
 
@@ -240,6 +271,10 @@ Table 6. ADS scenario clusters (k = 7).
 The biggest cluster (C2) is the typical "AV stopped, low speed bump" type. The most severe one, C5, is "AV moving at impact". These are the cases the operations team would want to see first if a model flags them. The animal cluster has zero severe cases, which is consistent with how those incidents are reported.
 
 We also ran the same clustering on L2 (`11_cluster_profiling_by_level.py --level L2`) for symmetry. Almost every L2 cluster is at 95% to 100% severe, so the clustering for L2 is mostly about scenario type, not about severity contrast.
+
+Before the cluster profile, the figure below shows two diagnostic views: the silhouette score across `k` from 3 to 8, and a 2D PCA projection of the ADS feature matrix colored by the cluster id. The silhouette curve is what we used to pick k = 7, and the PCA scatter gives a sense of how well separated the clusters are in feature space.
+
+![ADS clustering diagnostics: silhouette score against k, and PCA scatter colored by cluster id.](Presentation/figures/10_clustering_silhouette_and_pca.png)
 
 The figure below brings together the parts of the ADS clustering that are useful to read at once. The top left panel is the silhouette score against `k` from 3 to 8, with a dashed line at the value chosen by the maximum (k = 7). The next two panels show the cluster sizes and the severe rate per cluster compared with the overall ADS average. The bottom panels show the roadway type distribution per cluster and the human readable scenario label table that we used in Table 6.
 
